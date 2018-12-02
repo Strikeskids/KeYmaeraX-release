@@ -8,7 +8,7 @@ import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
   * {{{
   *   Interpreter : BelleExpr * BelleValue => BelleValue
   * }}}
- *
+  *
   * @author Nathan Fulton
   * @see [[SequentialInterpreter]]
   */
@@ -31,6 +31,8 @@ trait Interpreter {
   */
 trait IOListener {
   def begin(input: BelleValue, expr: BelleExpr): Unit
-  def end(input: BelleValue, expr: BelleExpr, output: Either[BelleValue,BelleThrowable]): Unit
+
+  def end(input: BelleValue, expr: BelleExpr, output: Either[BelleValue, BelleThrowable]): Unit
+
   def kill(): Unit
 }
