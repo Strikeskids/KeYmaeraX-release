@@ -21,7 +21,7 @@ object DBTools {
       case Some(sId) => db.getExecutionStep(proofId, sId).map(_.local).get
     }
     new TraceRecordingListener(db, proofId, parentStep,
-      globalProvable, branch, recursive = false, tacticName) :: Nil
+      globalProvable, branch, tacticName) :: Nil
   }
 
 }

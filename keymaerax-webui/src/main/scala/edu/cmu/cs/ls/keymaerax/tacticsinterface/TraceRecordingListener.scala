@@ -17,13 +17,11 @@ class TraceRecordingListener(db: DBAbstraction,
                              initialSibling: Option[Int],
                              globalProvable:ProvableSig,
                              branch:Int,
-                             recursive: Boolean,
                              ruleName: String) extends IOListener {
   class TraceNode (isFirstNode: Boolean){
     var id: Option[Int] = None
     var parent: TraceNode = null
     var sibling: Option[Int] = None
-    var output: ProvableSig = null
     var local: ProvableSig = null
     var executable: BelleExpr = null
     var status: ExecutionStepStatus = null
@@ -83,11 +81,8 @@ class TraceRecordingListener(db: DBAbstraction,
       if (parent != null) {
         parent.status = ExecutionStepStatus.DependsOnChildren
         parent.reverseChildren = node :: parent.reverseChildren
-        if (recursive) {
-          db.updateExecutionStep(parent.stepId.get, parent.asPOJO)
-        }
       }
-      if (parent == null || recursive) {
+      if (parent == null) {
         node.stepId = Some(db.addExecutionStep(node.asPOJO))
         nodesWritten = node :: nodesWritten
       }
@@ -106,7 +101,7 @@ class TraceRecordingListener(db: DBAbstraction,
           case Left(_) => ExecutionStepStatus.Finished
           case Right(_) => ExecutionStepStatus.Error
         }
-      if (node != null && !recursive) return
+      if (node != null) return
 //      db.updateExecutionStep(current.stepId.get, current.asPOJO)
 //      if (node == null) {
 //        result match {

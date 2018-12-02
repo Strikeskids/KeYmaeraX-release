@@ -2325,7 +2325,7 @@ object RequestHelper {
       case _: Throwable => tacticName
     }
     new TraceRecordingListener(db, proofId, parentStep,
-      globalProvable, branch, recursive = false, ruleName) :: Nil
+      globalProvable, branch, ruleName) :: Nil
   }
 
 }

@@ -21,7 +21,7 @@ class TraceRecordingTests extends FlatSpec with Matchers with BeforeAndAfterEach
   val db = DBAbstractionObj.testDatabase
   //@todo fill in reasonable data, this is bogus
   private val u = 999
-  val listener = new TraceRecordingListener(db, 1337, Some(u), ProvableSig.startProof(True), 0, false, "TODO")
+  val listener = new TraceRecordingListener(db, 1337, Some(u), ProvableSig.startProof(True), 0, "TODO")
   val theInterpreter = new ExhaustiveSequentialInterpreter(Seq(listener))
   object TestLib extends UnifyUSCalculus
 

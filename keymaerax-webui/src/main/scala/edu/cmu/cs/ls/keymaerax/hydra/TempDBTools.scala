@@ -89,7 +89,7 @@ class TempDBTools(additionalListeners: Seq[IOListener]) {
     }
     val globalProvable = ProvableSig.startProof(s)
     val listener = new TraceRecordingListener(db, pId, None,
-      globalProvable, 0 /* start from single provable */, recursive = false, "custom")
+      globalProvable, 0 /* start from single provable */, "custom")
     val listeners = listener::Nil ++ additionalListeners
     BelleInterpreter.setInterpreter(interpreter(listeners))
     BelleInterpreter(t, BelleProvable(ProvableSig.startProof(s))) match {
