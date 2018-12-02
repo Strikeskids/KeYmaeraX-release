@@ -44,42 +44,27 @@ object BelleLexer extends ((String) => List[BelleToken]) with Logging {
     }
 
   private def findNextToken(input: String, loc: Location): Option[(String, BelleToken, Location)] = {
-    /**
-      * Helper method for findNextToken
-      *
-      * @param cols Number of columns to move cursor.
-      * @param terminal terminal to generate a token for.
-      * @return Return value of findNextToken
-      */
-    def consumeColumns(cols: Int, terminal: BelleTerminal, loc: Location) = {
-      assert(cols > 0, "Cannot move cursor less than 1 columns.")
-      Some((
-        input.substring(cols),
-        BelleToken(terminal, spanningRegion(loc, cols-1)),
-        suffixOf(loc, cols)))
-    }
     /** Helper method for findNextToken */
-    def consumeTerminalLength(terminal: BelleTerminal, location: Location) =
-      consumeColumns(terminal.img.length, terminal, location)
+    def consumeTerminalLength(terminal: BelleTerminal, location: Location) = {
+      val token = terminal.img
+      advanceRegion(location, token) match {
+        case (tokenRegion, nextRegion) =>
+          Some((
+            input.substring(token.length),
+            BelleToken(terminal, tokenRegion),
+            nextRegion
+          ))
+      }
+    }
 
     input match {
       //Comments, newlines, and white-space. These are all copied from the KeYmaera X lexer.
       case comment(theComment) =>
         val comment = input.substring(0, theComment.length)
-        val lastLineCol = comment.lines.toList.last.length //column of last line.
-        val lineCount = comment.lines.length
-        findNextToken(input.substring(theComment.length), loc match {
-          case UnknownLocation => UnknownLocation
-          case Region(sl, sc, el, ec) => Region(sl + lineCount - 1, lastLineCol, el, ec)
-          case SuffixRegion(sl, sc) => SuffixRegion(sl + lineCount - 1, theComment.length)
-        })
+        findNextToken(input.substring(theComment.length), advanceRegion(loc, theComment)._2)
 
       case newline(_*) =>
-        findNextToken(input.tail, loc match {
-          case UnknownLocation     => UnknownLocation
-          case Region(sl,sc,el,ec) => Region(sl+1,1,el,ec)
-          case SuffixRegion(sl,sc) => SuffixRegion(sl+1, 1)
-        })
+        findNextToken(input.tail, advanceRegion(loc, "\n")._2)
 
       case whitespace(spaces) =>
         findNextToken(input.substring(spaces.length), loc match {
@@ -125,14 +110,7 @@ object BelleLexer extends ((String) => List[BelleToken]) with Logging {
       case UNIFIABLE_MATCH.startPattern(_*) => consumeTerminalLength(UNIFIABLE_MATCH, loc)
 
       //Delimited expressions
-      case EXPRESSION.startPattern(expressionString) => try {
-        //Constructing an EXPRESSION results in an attempt to parse expressionString, which might
-        //result in a parse error that should be passed back to the user.
-        consumeTerminalLength(EXPRESSION(expressionString), loc)
-      } catch {
-        case e : Throwable => throw LexException(
-          s"Could not parse expression: $expressionString", loc)
-      }
+      case EXPRESSION.startPattern(contents, _*) => consumeTerminalLength(EXPRESSION(contents), loc)
 
       //Misc.
       case OPEN_PAREN.startPattern(_*) => consumeTerminalLength(OPEN_PAREN, loc)
@@ -151,34 +129,24 @@ object BelleLexer extends ((String) => List[BelleToken]) with Logging {
   private val comment = """(?s)(^/\*[\s\S]*?\*/)[\s\S]*""".r
 
   /**
-    * Returns the region containing everything between the starting position of the current location
-    * location and the indicated offset of from the starting positiong of the current location,
-    * inclusive.
-    *
-    * @param location Current location
-    * @param endColOffset Column offset of the region
-    * @return The region spanning from the start of ``location" to the offset from the start of ``location".
+    * Compute the two regions corresponding to a consumed token
+    * @param loc The location of the consumed token
+    * @param consumed The token that was consumed
+    * @return (The region corresponding to the token, The region after the token)
     */
-  private def spanningRegion(location: Location, endColOffset: Int) =
-    location match {
-      case UnknownLocation        => UnknownLocation
-      case Region(sl, sc, el, ec) => Region(sl, sc, sl, sc + endColOffset)
-      case SuffixRegion(sl, sc)   => Region(sl, sc, sl, sc + endColOffset)
+  private def advanceRegion(loc: Location, consumed: String): (Location, Location) = {
+    val length = consumed.length()
+    val lines = consumed.count(_ == '\n')
+    val lastLineLength = length - consumed.lastIndexOf('\n') - 1
+    loc match {
+      case UnknownLocation => (UnknownLocation, UnknownLocation)
+      case Region(sl, sc, el, ec) =>
+        val lastLinePos = if (lines == 0) sc + length else lastLineLength + 1
+        (Region(sl, sc, sl + lines, lastLinePos), Region(sl + lines, lastLinePos, el, ec))
+      case SuffixRegion(sl, sc) =>
+        val lastLinePos = if (lines == 0) sc + length else lastLineLength + 1
+        (Region(sl, sc, sl + lines, lastLinePos), SuffixRegion(sl + lines, lastLinePos))
     }
-
-  /**
-    *
-    * @param location Current location
-    * @param colOffset Number of columns to chop off from the starting position of location.
-    * @return A region containing all of location except the indicated columns in the initial row.
-    *         I.e., the colOffset-suffix of location.
-    */
-  private def suffixOf(location: Location, colOffset: Int) : Location =
-    location match {
-      case UnknownLocation        => UnknownLocation
-      case Region(sl, sc, el, ec) => Region(sl, sc + colOffset, el, ec)
-      case SuffixRegion(sl, sc)   => SuffixRegion(sl, sc + colOffset)
-    }
-
+  }
 
 }

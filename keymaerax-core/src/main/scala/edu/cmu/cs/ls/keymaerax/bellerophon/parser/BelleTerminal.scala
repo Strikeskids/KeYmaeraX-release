@@ -126,16 +126,11 @@ private object PARTIAL extends BelleTerminal("partial") {
 
 /** A tactic argument expression. We allow strings, terms, and formulas as arguments. */
 private case class EXPRESSION(exprString: String) extends BelleTerminal(exprString) with TACTIC_ARGUMENT {
-  lazy val undelimitedExprString: String = exprString.drop(2).dropRight(2)
+  lazy val undelimitedExprString: String =
+    EXPRESSION.unwrapString(exprString)
 
   /** Parses the `exprString` as dL expression. May throw a parse exception. */
-  lazy val expression: Expression = {
-    assert(exprString.startsWith("{`") && exprString.endsWith("`}"),
-      s"EXPRESSION.regexp should ensure delimited expression begin and end with {` `}, but an EXPRESSION was constructed with argument: $exprString")
-
-    //Remove delimiters and parse the expression.
-    KeYmaeraXParser(undelimitedExprString)
-  }
+  lazy val expression: Expression = KeYmaeraXParser(undelimitedExprString)
 
   override def regexp: Regex = EXPRESSION.regexp
   override val startPattern: Regex = EXPRESSION.startPattern
@@ -148,8 +143,45 @@ private case class EXPRESSION(exprString: String) extends BelleTerminal(exprStri
   }
 }
 private object EXPRESSION {
-  def regexp = """(\{\`[^\`]*\`\})""".r
+  /* Expressions can look like
+     {``}
+     {`<non-backtick stuff>`}
+     {{X`<stuff that does not contain BACKTICK X>`X}} where the X is any non-close-brace character
+   */
+  def emptyRegex = """\{\`\`\}"""
+  def simpleRegex = """\{\`[^\`]+\`\}"""
+  def complexRegex = """\{\{(.)\`(?:[^\`]*(?:\`+(?!\2))?)*\`\2\}\}"""
+  def regexp = ("(" + emptyRegex + "|" + simpleRegex + "|" + complexRegex + ")").r
   val startPattern = ("^" + regexp.pattern.pattern + "[\\s\\S]*").r
+
+  val quoteNames = """`"'1234567890!@#$%^&*-=+_|abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"""
+
+  def unwrapString(raw: String): String = {
+    if (raw == "{``}")
+      ""
+    else if (raw.startsWith("{{")) {
+      val special = raw.charAt(2)
+      assert(raw.startsWith("{{" + special + "`") && raw.endsWith("`" + special + "}}"),
+        s"EXPRESSION.regexp should ensure delimited expression begin and end with {``$special` `$special``}, but an EXPRESSION was constructed with argument: $raw")
+      raw.drop(4).dropRight(4)
+    } else {
+      assert(raw.startsWith("{`") && raw.endsWith("`}"),
+        s"EXPRESSION.regexp should ensure delimited expression begin and end with {` `}, but an EXPRESSION was constructed with argument: $raw")
+      raw.drop(2).dropRight(2)
+    }
+  }
+
+  val quotePattern = """\`.""".r
+  def wrapString(unwrapped: String): String = {
+    if (unwrapped.indexOf('`') == -1)
+      s"{`$unwrapped`}"
+    else {
+      val invalidNames = quotePattern.findAllIn(unwrapped).foldLeft(Set[Character]())((s, m) => s + m.charAt(1))
+      // We should have included enough quote names to ensure this effectively never fails
+      val name = quoteNames.find(!invalidNames.contains(_)).get
+      s"{{$name`$unwrapped`$name}}"
+    }
+  }
 }
 /** For testing only. */
 object EXPRESSION2 {
