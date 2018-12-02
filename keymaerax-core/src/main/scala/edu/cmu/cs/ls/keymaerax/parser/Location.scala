@@ -40,7 +40,7 @@ object UnknownLocation extends Location {
   def --(other: Location): Location = this
 }
 case class Region(line: Int, column: Int, endLine: Int, endColumn: Int) extends Location {
-  require(line <= endLine || (line == endLine && column <= endColumn),
+  require(line < endLine || (line == endLine && column <= endColumn),
     "A region cannot start after it ends.")
   def begin = Region(line, column, line, column)
   def end = Region(endLine, endColumn, endLine, endColumn)
