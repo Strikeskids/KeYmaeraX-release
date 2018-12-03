@@ -144,44 +144,17 @@ private case class EXPRESSION(exprString: String) extends BelleTerminal(exprStri
   }
 }
 private object EXPRESSION {
-  /* Expressions can look like
-     {``}
-     {`<non-backtick stuff>`}
-     {{X`<stuff that does not contain BACKTICK X>`X}} where the X is any non-close-brace character
-   */
-  def emptyRegex = """\{\`\`\}"""
-  def simpleRegex = """\{\`[^\`]+\`\}"""
-  def complexRegex = """\{\{(.)\`(?:[^\`]*(?:\`+(?!\2))?)*\`\2\}\}"""
-  def regexp = ("(" + emptyRegex + "|" + simpleRegex + "|" + complexRegex + ")").r
+  def regexp = """(\{\`[^\`]*\`\})""".r
   val startPattern = ("^" + regexp.pattern.pattern + "[\\s\\S]*").r
 
-  val quoteNames = """`"'1234567890!@#$%^&*-=+_|abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"""
-
   def unwrapString(raw: String): String = {
-    if (raw == "{``}")
-      ""
-    else if (raw.startsWith("{{")) {
-      val special = raw.charAt(2)
-      assert(raw.startsWith("{{" + special + "`") && raw.endsWith("`" + special + "}}"),
-        s"EXPRESSION.regexp should ensure delimited expression begin and end with {``$special` `$special``}, but an EXPRESSION was constructed with argument: $raw")
-      raw.drop(4).dropRight(4)
-    } else {
-      assert(raw.startsWith("{`") && raw.endsWith("`}"),
-        s"EXPRESSION.regexp should ensure delimited expression begin and end with {` `}, but an EXPRESSION was constructed with argument: $raw")
-      raw.drop(2).dropRight(2)
-    }
+    assert(raw.startsWith("{`") && raw.endsWith("`}"),
+      s"EXPRESSION.regexp should ensure delimited expression begin and end with {` `}, but an EXPRESSION was constructed with argument: $raw")
+    raw.drop(2).dropRight(2)
   }
 
-  val quotePattern = """\`.""".r
   def wrapString(unwrapped: String): String = {
-    if (unwrapped.indexOf('`') == -1)
-      s"{`$unwrapped`}"
-    else {
-      val invalidNames = quotePattern.findAllIn(unwrapped).foldLeft(Set[Character]())((s, m) => s + m.charAt(1))
-      // We should have included enough quote names to ensure this effectively never fails
-      val name = quoteNames.find(!invalidNames.contains(_)).get
-      s"{{$name`$unwrapped`$name}}"
-    }
+    s"{`$unwrapped`}"
   }
 }
 /** For testing only. */

@@ -267,8 +267,6 @@ object Idioms {
     }
   }
 
-  def pending(t: String): BelleExpr = "pending" byWithInput (t, nil)
-
   /** Repeats t while condition at position is true. */
   def repeatWhile(condition: Expression => Boolean)(t: BelleExpr): DependentPositionTactic = "loopwhile" by {(pos: Position) =>
     SaturateTactic(DebuggingTactics.assertAt((_: Expression) => "Stopping loop", condition)(pos) & t)

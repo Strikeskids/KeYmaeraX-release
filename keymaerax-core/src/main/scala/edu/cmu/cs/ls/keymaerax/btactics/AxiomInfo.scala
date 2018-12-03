@@ -943,12 +943,6 @@ object DerivationInfo {
   //
     new TacticInfo("nil", "nil", {case () => Idioms.nil}),
 
-    InputTacticInfo(
-      "pending",
-      "pending",
-      StringArg("tactic") :: Nil,
-      _ => ((s: String) => Idioms.pending(s)): TypedFunc[String, BelleExpr]),
-
     new InputPositionTacticInfo(
       "transformEquality",
       "transformEquality",
