@@ -164,3 +164,207 @@ class TraceRecordingListener(db: DBAbstraction,
     }
   }
 }
+
+case class StepPointer(step: Int, branch: Int) {}
+
+class StepByStepRecordingListener(db: DBAbstraction,
+                                  proofId: Int,
+                                  previousStep: Option[StepPointer],
+                                  ruleName: String,
+                                 ) extends IOListener {
+  /** Set when we've finished the entire proof tree */
+  var isDone: Boolean = false
+  /** Set when the listener is killed */
+  var isDead: Boolean = false
+
+  /** Our depth within an atomic leaf node */
+  var depth: Int = 0
+  /** The node that is currently being executed */
+  var node: Option[StepNode] = None
+
+  /** A list of all of the nodes that have been created. Used for aborting nodes if `kill`ed */
+  var allNodes: List[StepNode] = Nil
+
+  class StepNode(previous: Option[StepPointer], val parent: Option[StepNode], executable: BelleExpr) {
+    var id: Option[Int] = None
+    var status: ExecutionStepStatus = ExecutionStepStatus.Running
+
+    lazy val executableId: Int = db.addBelleExpr(executable)
+
+    val previousId: Option[Int] = previous.map(_.step)
+    val branchOrder: Int = previous.map(_.branch).getOrElse(0)
+
+    private var _local: ProvableSig = _
+    private var localProvableId: Option[Int] = None
+
+    def local_=(local: ProvableSig): Unit = {
+      assert(_local == null)
+      _local = local
+      localProvableId = Some(db.createProvable(local))
+    }
+
+    def local: ProvableSig = _local
+
+    def localNumSubgoals: Int = if (local != null) local.subgoals.size else -1
+
+    def localNumOpenSubgoals: Int = if (local != null) local.subgoals.size else -1
+
+    def add(): Unit = {
+      assert(id.isEmpty)
+      id = Some(db.addExecutionStep(asPOJO))
+    }
+
+    def update(): Unit = {
+      id.foreach(db.updateExecutionStep(_, asPOJO))
+    }
+
+    def remove(): Unit = {
+      id.foreach(db.deleteExecutionStep(proofId, _))
+      id = None
+    }
+
+    def child(input: BelleValue, executable: BelleExpr): Option[StepNode] =
+      None
+
+    def finishChild(child: StepNode): Unit =
+      throw new AssertionError("Cannot finish a child on atomic node")
+
+    private def asPOJO: ExecutionStepPOJO =
+      ExecutionStepPOJO(id, proofId, previousId, branchOrder, status, executableId, None, None, localProvableId,
+        userExecuted = parent == null, ruleName, localNumSubgoals, localNumOpenSubgoals)
+  }
+
+  class SeqStepNode(previous: Option[StepPointer], parent: Option[StepNode], executable: BelleExpr)
+    extends StepNode(previous, parent, executable) {
+
+    var previousPointer: Option[StepPointer] = previous
+
+    //@todo handle multiple outputs properly
+
+    override def child(input: BelleValue, executable: BelleExpr): Option[StepNode] = {
+      Some(makeNode(input, executable, Some(this), previousPointer))
+    }
+
+    override def finishChild(child: StepNode): Unit = {
+      previousPointer = child.id.map(StepPointer(_, 0))
+      id = child.id
+    }
+
+    override def add(): Unit = ()
+
+    override def update(): Unit = ()
+
+    override def remove(): Unit = ()
+  }
+
+  class BranchStepNode(previousStep: Int, parent: Option[StepNode], executable: BelleExpr)
+    extends StepNode(previous = Some(StepPointer(previousStep, 0)), parent, executable) {
+
+    var currentBranch: Int = 0
+
+    override def child(input: BelleValue, executable: BelleExpr): Option[StepNode] = {
+      Some(makeNode(input, executable, Some(this), Some(StepPointer(previousStep, currentBranch))))
+    }
+
+    override def finishChild(child: StepNode): Unit = {
+      currentBranch += 1
+    }
+
+    override def add(): Unit = ()
+
+    override def update(): Unit = ()
+
+    override def remove(): Unit = ()
+  }
+
+  //@todo Add nodes for EitherTactic and DependentTactics
+
+  private def makeNode(input: BelleValue, executable: BelleExpr,
+                       parent: Option[StepNode], previous: Option[StepPointer]
+                      ): StepNode = {
+    executable match {
+      case SeqTactic(_, _) | RepeatTactic(_, _) => new SeqStepNode(previous, parent, executable)
+      case BranchTactic(_) | OnAll(_) =>
+        assert(previous.nonEmpty && previous.get.branch == 0)
+        new BranchStepNode(previous.get.step, parent, executable)
+      case _ => new StepNode(previous, parent, executable)
+    }
+  }
+
+  override def begin(input: BelleValue, expr: BelleExpr): Unit = this.synchronized {
+    assert(!isDone)
+    if (isDead) return
+
+    if (depth > 0) {
+      depth += 1
+      return
+    }
+
+    node match {
+      case None =>
+        val next = makeNode(input, expr, node, previousStep)
+        allNodes = next :: allNodes
+        next.add()
+        node = Some(next)
+
+      case Some(n) =>
+        n.child(input, expr) match {
+          case None =>
+            depth += 1
+          case Some(next) =>
+            n.status = ExecutionStepStatus.DependsOnChildren
+            n.update()
+
+            allNodes = next :: allNodes
+            next.add()
+            node = Some(next)
+        }
+    }
+  }
+
+  override def end(input: BelleValue, expr: BelleExpr, output: Either[BelleValue, BelleThrowable]
+                  ): Unit = this.synchronized {
+    assert(!isDone)
+    if (isDead) return
+
+    if (depth > 0) {
+      depth -= 1
+      return
+    }
+
+    val curr = node.get
+    output match {
+      case Left(BelleProvable(p, _)) =>
+        curr.local = p
+        curr.status = ExecutionStepStatus.Finished
+        curr.update()
+      case Left(_) =>
+        curr.status = ExecutionStepStatus.Finished
+      case Right(_) =>
+        curr.status = ExecutionStepStatus.Error
+    }
+    curr.update()
+
+    curr.parent match {
+      case None =>
+        if (db.getPlainOpenSteps(proofId).isEmpty)
+          db.updateProofSetClosed(proofId)
+        isDone = true
+
+      case Some(parent) =>
+        parent.finishChild(curr)
+        node = Some(parent)
+    }
+  }
+
+  override def kill(): Unit = this.synchronized {
+    isDead = true
+    allNodes.foreach(node => {
+      node.status match {
+        case ExecutionStepStatus.DependsOnChildren | ExecutionStepStatus.Running =>
+          node.status = ExecutionStepStatus.Aborted
+          node.update()
+      }
+    })
+  }
+}
