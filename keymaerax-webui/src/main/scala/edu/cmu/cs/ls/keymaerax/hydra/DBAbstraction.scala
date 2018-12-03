@@ -257,6 +257,12 @@ trait DBAbstraction {
       info.stepCount, info.closed, info.provableId, info.temporary, info.tactic))
   }
 
+  def updateProofSetClosed(proofId: Int): Unit = {
+    val info = getProofInfo(proofId)
+    updateProofInfo(new ProofPOJO(proofId, info.modelId, info.name, info.description, info.date,
+      info.stepCount, true, info.provableId, info.temporary, info.tactic))
+  }
+
   def updateProofName(proofId: String, name: String): Unit = updateProofName(proofId.toInt, name)
 
   def updateModel(modelId: Int, name: String, title: Option[String], description: Option[String], content: Option[String]): Unit
