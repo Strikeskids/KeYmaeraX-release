@@ -292,6 +292,12 @@ object BelleParser extends (String => BelleExpr) with Logging {
         ParserState(r :+ ParsedBelleExpr(OnAll(innerExpr), loc.spanTo(innerLoc)), remainder)
       //endregion
 
+      //region pending combinator
+      case r :+ BelleToken(PENDING, loc) =>
+        val (innerExpr, innerLoc, remainder) = parseInnerExpr(st.input, tacticDefs, exprDefs, g, defs)
+        ParserState(r :+ ParsedBelleExpr(PendingTactic(innerExpr), loc.spanTo(innerLoc)), remainder)
+      //endregion
+
       //region ? combinator
       case r :+ BelleToken(OPTIONAL, loc) =>
         val (innerExpr, innerLoc, remainder) = parseInnerExpr(st.input, tacticDefs, exprDefs, g, defs)

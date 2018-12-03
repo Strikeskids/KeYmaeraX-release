@@ -589,6 +589,12 @@ case class USubstPatternTactic(options: Seq[(BelleType, RenUSubst => BelleExpr)]
   */
 case class OnAll(e: BelleExpr) extends BelleExpr { override def prettyString = "doall(" + e.prettyString + ")" }
 
+case class PendingTactic(e: BelleExpr) extends BuiltInTactic("pending") {
+  override def prettyString: String = "pending(" + e.prettyString + ")"
+
+  override private[bellerophon] def result(provable: ProvableSig): ProvableSig = provable
+}
+
 /**
   * ChooseSome(options, e)(pr) proves `e(o)(pr)` after choosing some option `o` from `options`
   * whose proof with tactic `e` succeeds after supplying argument `o` to `e`.
