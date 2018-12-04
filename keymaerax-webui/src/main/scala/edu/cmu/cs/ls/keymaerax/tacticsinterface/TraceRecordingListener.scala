@@ -185,25 +185,41 @@ class StepByStepRecordingListener(db: DBAbstraction,
   /** A list of all of the nodes that have been created. Used for aborting nodes if `kill`ed */
   var allNodes: List[StepNode] = Nil
 
-  class StepNode(previous: Option[StepPointer], val parent: Option[StepNode], executable: BelleExpr) {
+  class StepNode(previous: List[StepPointer], val parent: Option[StepNode], val executable: BelleExpr) {
     var id: Option[Int] = None
     var status: ExecutionStepStatus = ExecutionStepStatus.Running
 
     lazy val executableId: Int = db.addBelleExpr(executable)
 
-    val previousId: Option[Int] = previous.map(_.step)
-    val branchOrder: Int = previous.map(_.branch).getOrElse(0)
+    val previousId: Option[Int] = previous.headOption.map(_.step)
+    val branchOrder: Int = previous.headOption.map(_.branch).getOrElse(0)
+
+    /** Only execution steps with a unique parent can be inserted into the database */
+    val canInsert: Boolean = previous.drop(1).isEmpty
 
     private var _local: ProvableSig = _
-    private var localProvableId: Option[Int] = None
+    private var _localProvableId: Option[Int] = None
 
     def local_=(local: ProvableSig): Unit = {
       assert(_local == null)
       _local = local
-      localProvableId = Some(db.createProvable(local))
     }
 
     def local: ProvableSig = _local
+
+    def localProvableId: Option[Int] = {
+      if (_local != null && _localProvableId.isEmpty)
+        _localProvableId = Some(db.createProvable(_local))
+      _localProvableId
+    }
+
+    def next: List[StepPointer] =
+      id match {
+        case Some(step) if local != null =>
+          local.subgoals.indices.map(StepPointer(step, _)).toList
+        case _ =>
+          Nil
+      }
 
     def localNumSubgoals: Int = if (local != null) local.subgoals.size else -1
 
@@ -211,17 +227,19 @@ class StepByStepRecordingListener(db: DBAbstraction,
 
     /** Add this node to the database */
     def add(): Unit = {
-      assert(id.isEmpty)
+      assert(id.isEmpty && canInsert)
       id = Some(db.addExecutionStep(asPOJO))
     }
 
     /** Update this node in the database */
     def update(): Unit = {
+      assert(canInsert)
       id.foreach(db.updateExecutionStep(_, asPOJO))
     }
 
     /** Remove this node from the database */
     def remove(): Unit = {
+      assert(canInsert)
       id.foreach(db.deleteExecutionStep(proofId, _))
       id = None
     }
@@ -242,10 +260,10 @@ class StepByStepRecordingListener(db: DBAbstraction,
         userExecuted = parent == null, ruleName, localNumSubgoals, localNumOpenSubgoals)
   }
 
-  class SeqStepNode(previous: Option[StepPointer], parent: Option[StepNode], executable: BelleExpr)
+  class SeqStepNode(previous: List[StepPointer], parent: Option[StepNode], executable: BelleExpr)
     extends StepNode(previous, parent, executable) {
 
-    var previousPointer: Option[StepPointer] = previous
+    var previousPointer: List[StepPointer] = previous
 
     //@todo handle multiple outputs properly
 
@@ -254,9 +272,11 @@ class StepByStepRecordingListener(db: DBAbstraction,
     }
 
     override def finishChild(child: StepNode): Unit = {
-      previousPointer = child.id.map(StepPointer(_, 0))
+      previousPointer = child.next
       id = child.id
     }
+
+    override def next: List[StepPointer] = previousPointer
 
     override def add(): Unit = ()
 
@@ -265,18 +285,27 @@ class StepByStepRecordingListener(db: DBAbstraction,
     override def remove(): Unit = ()
   }
 
-  class BranchStepNode(previousStep: Int, parent: Option[StepNode], executable: BelleExpr)
-    extends StepNode(previous = Some(StepPointer(previousStep, 0)), parent, executable) {
+  class BranchStepNode(previous: List[StepPointer], parent: Option[StepNode], executable: BelleExpr)
+    extends StepNode(previous, parent, executable) {
 
-    var currentBranch: Int = 0
+    var stepsLeft: List[StepPointer] = previous
+    var allStepsRev: List[StepPointer] = Nil
 
     override def startChild(input: BelleValue, executable: BelleExpr): Option[StepNode] = {
-      Some(makeNode(input, executable, Some(this), Some(StepPointer(previousStep, currentBranch))))
+      stepsLeft match {
+        case Nil =>
+          throw new AssertionError("Unexpectedly had no steps left. Listener got out of sync with the interpreter")
+        case hd :: _ =>
+          Some(makeNode(input, executable, Some(this), hd :: Nil))
+      }
     }
 
     override def finishChild(child: StepNode): Unit = {
-      currentBranch += 1
+      allStepsRev = child.next.reverse ++ allStepsRev
+      stepsLeft = stepsLeft.tail
     }
+
+    override def next: List[StepPointer] = allStepsRev.reverse
 
     override def add(): Unit = ()
 
@@ -288,13 +317,13 @@ class StepByStepRecordingListener(db: DBAbstraction,
   //@todo Add nodes for EitherTactic and DependentTactics
 
   private def makeNode(input: BelleValue, executable: BelleExpr,
-                       parent: Option[StepNode], previous: Option[StepPointer]
+                       parent: Option[StepNode], previous: List[StepPointer]
                       ): StepNode = {
     executable match {
-      case SeqTactic(_, _) | RepeatTactic(_, _) => new SeqStepNode(previous, parent, executable)
+      case SeqTactic(_, _) | RepeatTactic(_, _) | SaturateTactic(_) =>
+        new SeqStepNode(previous, parent, executable)
       case BranchTactic(_) | OnAll(_) =>
-        assert(previous.nonEmpty && previous.get.branch == 0)
-        new BranchStepNode(previous.get.step, parent, executable)
+        new BranchStepNode(previous, parent, executable)
       case _ => new StepNode(previous, parent, executable)
     }
   }
@@ -310,7 +339,7 @@ class StepByStepRecordingListener(db: DBAbstraction,
 
     node match {
       case None =>
-        val next = makeNode(input, expr, node, previousStep)
+        val next = makeNode(input, expr, node, previousStep.toList)
         allNodes = next :: allNodes
         next.add()
         node = Some(next)
@@ -345,7 +374,6 @@ class StepByStepRecordingListener(db: DBAbstraction,
       case Left(BelleProvable(p, _)) =>
         curr.local = p
         curr.status = ExecutionStepStatus.Finished
-        curr.update()
       case Left(_) =>
         curr.status = ExecutionStepStatus.Finished
       case Right(_) =>
