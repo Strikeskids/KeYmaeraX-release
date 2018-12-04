@@ -39,6 +39,11 @@ trait ProofTreeNode {
   /** The tactic short name. */
   def makerShortName: Option[String]
 
+  /** The tactic (serialized BelleExpr) that is executed on this node */
+  def action: Option[String] = children.headOption.flatMap(_.maker)
+
+  def actionShortName: Option[String] = children.headOption.flatMap(_.makerShortName)
+
   /** A local provable, whose subgoals are filled in by the node's children. */
   def localProvable: ProvableSig
 
