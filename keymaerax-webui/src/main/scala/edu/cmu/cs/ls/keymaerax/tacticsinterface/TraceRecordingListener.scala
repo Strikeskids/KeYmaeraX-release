@@ -157,7 +157,7 @@ class TraceRecordingListener(db: DBAbstraction,
     synchronized {
       isDead = true
       nodesWritten.foreach(node =>
-        node.stepId.foreach { case id =>
+        node.stepId.foreach { id =>
           node.status = ExecutionStepStatus.Aborted
           db.updateExecutionStep(id, node.asPOJO)
         })
@@ -209,27 +209,35 @@ class StepByStepRecordingListener(db: DBAbstraction,
 
     def localNumOpenSubgoals: Int = if (local != null) local.subgoals.size else -1
 
+    /** Add this node to the database */
     def add(): Unit = {
       assert(id.isEmpty)
       id = Some(db.addExecutionStep(asPOJO))
     }
 
+    /** Update this node in the database */
     def update(): Unit = {
       id.foreach(db.updateExecutionStep(_, asPOJO))
     }
 
+    /** Remove this node from the database */
     def remove(): Unit = {
       id.foreach(db.deleteExecutionStep(proofId, _))
       id = None
     }
 
-    def child(input: BelleValue, executable: BelleExpr): Option[StepNode] =
+    /** Starts a new child of this node running `executable` on `input`
+      *
+      * @return Some(child) unless this node is an atom that cannot have children
+      */
+    def startChild(input: BelleValue, executable: BelleExpr): Option[StepNode] =
       None
 
+    /** Notifies that the currently running `child` of this node finished */
     def finishChild(child: StepNode): Unit =
       throw new AssertionError("Cannot finish a child on atomic node")
 
-    private def asPOJO: ExecutionStepPOJO =
+    protected def asPOJO: ExecutionStepPOJO =
       ExecutionStepPOJO(id, proofId, previousId, branchOrder, status, executableId, None, None, localProvableId,
         userExecuted = parent == null, ruleName, localNumSubgoals, localNumOpenSubgoals)
   }
@@ -241,7 +249,7 @@ class StepByStepRecordingListener(db: DBAbstraction,
 
     //@todo handle multiple outputs properly
 
-    override def child(input: BelleValue, executable: BelleExpr): Option[StepNode] = {
+    override def startChild(input: BelleValue, executable: BelleExpr): Option[StepNode] = {
       Some(makeNode(input, executable, Some(this), previousPointer))
     }
 
@@ -262,7 +270,7 @@ class StepByStepRecordingListener(db: DBAbstraction,
 
     var currentBranch: Int = 0
 
-    override def child(input: BelleValue, executable: BelleExpr): Option[StepNode] = {
+    override def startChild(input: BelleValue, executable: BelleExpr): Option[StepNode] = {
       Some(makeNode(input, executable, Some(this), Some(StepPointer(previousStep, currentBranch))))
     }
 
@@ -308,7 +316,7 @@ class StepByStepRecordingListener(db: DBAbstraction,
         node = Some(next)
 
       case Some(n) =>
-        n.child(input, expr) match {
+        n.startChild(input, expr) match {
           case None =>
             depth += 1
           case Some(next) =>
