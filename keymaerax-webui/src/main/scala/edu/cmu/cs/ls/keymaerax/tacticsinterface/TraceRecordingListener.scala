@@ -265,8 +265,6 @@ class StepByStepRecordingListener(db: DBAbstraction,
 
     var previousPointer: List[StepPointer] = previous
 
-    //@todo handle multiple outputs properly
-
     override def startChild(input: BelleValue, executable: BelleExpr): Option[StepNode] = {
       Some(makeNode(input, executable, Some(this), previousPointer))
     }

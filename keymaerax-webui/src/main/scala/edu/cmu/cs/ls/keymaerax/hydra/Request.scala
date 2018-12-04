@@ -16,7 +16,7 @@ import edu.cmu.cs.ls.keymaerax.parser._
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
 import edu.cmu.cs.ls.keymaerax.btactics._
 import edu.cmu.cs.ls.keymaerax.btactics.DerivationInfo
-import edu.cmu.cs.ls.keymaerax.tacticsinterface.TraceRecordingListener
+import edu.cmu.cs.ls.keymaerax.tacticsinterface.{StepByStepRecordingListener, StepPointer, TraceRecordingListener}
 import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.bellerophon.parser.{BelleParser, BellePrettyPrinter, HackyInlineErrorMsgPrinter}
 import edu.cmu.cs.ls.keymaerax.btactics.ExpressionTraversal.{ExpressionTraversalFunction, StopTraversal}
@@ -1729,45 +1729,27 @@ class RunBelleTermRequest(db: DBAbstraction, userId: String, proofId: String, no
                 if (consultAxiomInfo) RequestHelper.getSpecificName(belleTerm, sequent, pos, pos2, _ => appliedExpr.prettyString)
                 else "custom"
 
-              def interpreter(proofId: Int, startNodeId: Int) = new Interpreter {
-                val inner = SpoonFeedingInterpreter(proofId, startNodeId, db.createProof, RequestHelper.listenerFactory(db),
-                  ExhaustiveSequentialInterpreter, 0, strict = false)
-
-                override def apply(expr: BelleExpr, v: BelleValue): BelleValue = try {
-                  inner(expr, v)
-                } catch {
-                  case ex: Throwable => inner.innerProofId match {
-                    case Some(innerId) =>
-                      //@note display progress of inner (Let) proof, works only in stepwise execution (step details dialog)
-                      val innerTrace = db.getExecutionTrace(innerId)
-                      if (innerTrace.steps.nonEmpty) BelleSubProof(innerId)
-                      else throw BelleTacticFailure("No progress", ex)
-                    case None => throw ex
-                  }
-                }
-
-                override def kill(): Unit = inner.kill()
-
-                override def isDead: Boolean = inner.isDead
-
-                override def listeners: Seq[IOListener] = inner.listeners
+              def stepByStepInterpreter(proofId: Int, startStep: Option[StepPointer]): Interpreter = {
+                new ExhaustiveSequentialInterpreter(
+                  new StepByStepRecordingListener(db, proofId, startStep, ruleName) :: Nil)
               }
 
               if (stepwise) {
                 if (ruleName == "custom") {
                   //@note execute tactic scripts step-by-step for better browsing
-                  val startStepIndex = node.id match {
-                    case DbStepPathNodeId(id, _) => db.getExecutionSteps(proofId.toInt).indexWhere(_.stepId == id)
+                  val startStep = node.id match {
+                    case DbStepPathNodeId(id, _) => id.map(StepPointer(_, node.goalIdx))
                     case _ => throw new Exception("Unexpected node ID shape " + node.id.toString
                       + ". Expected step path ID of the form (node ID,branch index)")
                   }
-                  val taskId = node.stepTactic(userId, interpreter(proofId.toInt, startStepIndex), appliedExpr)
+                  val taskId = node.stepTactic(userId, stepByStepInterpreter(proofId.toInt, startStep), appliedExpr)
                   RunBelleTermResponse(proofId, node.id.toString, taskId) :: Nil
                 } else {
                   val localProvable = ProvableSig.startProof(sequent)
                   val localProofId = db.createProof(localProvable)
                   val executor = BellerophonTacticExecutor.defaultExecutor
-                  val taskId = executor.schedule(userId, appliedExpr, BelleProvable(localProvable), interpreter(localProofId, -1))
+                  val taskId = executor.schedule(userId, appliedExpr, BelleProvable(localProvable),
+                    stepByStepInterpreter(localProofId, None))
                   RunBelleTermResponse(localProofId.toString, "()", taskId) :: Nil
                 }
               } else {
