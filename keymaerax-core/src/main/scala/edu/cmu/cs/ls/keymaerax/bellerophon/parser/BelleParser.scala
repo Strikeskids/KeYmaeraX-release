@@ -143,7 +143,7 @@ object BelleParser extends (String => BelleExpr) with Logging {
                                exprDefs: DefScope[Expression, DefExpression], g: Option[Generator.Generator[Expression]],
                                defs: Declaration ): (Option[String], BelleExpr, Location, List[BelleToken]) = tokens match {
     case BelleToken(OPEN_PAREN, oParenLoc) :: BelleToken(e@EXPRESSION(_), _) :: BelleToken(COMMA, commaLoc) :: tail =>
-      val (inner, loc, rest) = parseInnerExpr(BelleToken(OPEN_PAREN, commaLoc)::tokens, tacticDefs, exprDefs, g, defs)
+      val (inner, loc, rest) = parseInnerExpr(BelleToken(OPEN_PAREN, commaLoc)::tail, tacticDefs, exprDefs, g, defs)
       (Some(e.undelimitedExprString), inner, loc, rest)
     case BelleToken(OPEN_PAREN, oParenLoc) :: _ =>
       val (inner, loc, rest) = parseInnerExpr(tokens, tacticDefs, exprDefs, g, defs)
@@ -174,6 +174,7 @@ object BelleParser extends (String => BelleExpr) with Logging {
           case Some(BelleToken(BRANCH_COMBINATOR, _)) => ParserState(stack :+ st.input.head, st.input.tail)
           case Some(BelleToken(OPTIONAL, _)) => ParserState(stack :+ st.input.head, st.input.tail)
           case Some(BelleToken(ON_ALL, _)) => ParserState(stack :+ st.input.head, st.input.tail)
+          case Some(BelleToken(PENDING, _)) => ParserState(stack :+ st.input.head, st.input.tail)
           case Some(BelleToken(TACTIC, _)) => ParserState(stack :+ st.input.head, st.input.tail)
           case Some(BelleToken(LET, _)) => ParserState(stack :+ st.input.head, st.input.tail)
           case Some(BelleToken(DEF, _)) => ParserState(stack :+ st.input.head, st.input.tail)
