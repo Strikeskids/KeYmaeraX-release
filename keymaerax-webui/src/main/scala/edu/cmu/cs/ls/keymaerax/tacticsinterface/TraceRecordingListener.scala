@@ -185,23 +185,13 @@ class StepByStepRecordingListener(db: DBAbstraction,
   /** A list of all of the nodes that have been added to the DB. Used for aborting nodes if `kill`ed */
   var allNodes: List[StepNode] = Nil
 
-  class StepNode(previous: List[StepPointer], val parent: Option[StepNode], val executable: BelleExpr) {
-    var id: Option[Int] = None
+  abstract class StepNode(previous: List[StepPointer], val parent: Option[StepNode], val executable: BelleExpr) {
     var status: ExecutionStepStatus = ExecutionStepStatus.Running
 
-    /** If this node failed, was its failure recorded to the DB */
+    /** If this node failed, was it recorded into the db */
     var failureRecorded = false
 
-    lazy val executableId: Int = db.addBelleExpr(executable)
-
-    val previousId: Option[Int] = previous.headOption.map(_.step)
-    val branchOrder: Int = previous.headOption.map(_.branch).getOrElse(0)
-
-    /** Only execution steps with a unique parent can be inserted into the database */
-    val canInsert: Boolean = previous.drop(1).isEmpty
-
-    private var _local: ProvableSig = _
-    private var _localProvableId: Option[Int] = None
+    protected var _local: ProvableSig = _
 
     def local_=(local: ProvableSig): Unit = {
       assert(_local == null)
@@ -210,122 +200,176 @@ class StepByStepRecordingListener(db: DBAbstraction,
 
     def local: ProvableSig = _local
 
-    def localProvableId: Option[Int] = {
-      if (_local != null && _localProvableId.isEmpty)
-        _localProvableId = Some(db.createProvable(_local))
-      _localProvableId
-    }
-
-    def next: List[StepPointer] =
-      id match {
-        case Some(step) if local != null =>
-          local.subgoals.indices.map(StepPointer(step, _)).toList
-        case _ =>
-          Nil
-      }
+    /** Where should succeeding nodes attach to this provable */
+    def next: List[StepPointer]
 
     def localNumSubgoals: Int = if (local != null) local.subgoals.size else -1
 
     def localNumOpenSubgoals: Int = if (local != null) local.subgoals.size else -1
 
     /** Add this node to the database */
-    def add(): Unit = {
-      assert(id.isEmpty && canInsert)
-      id = Some(db.addExecutionStep(asPOJO))
-      allNodes = this :: allNodes
-    }
+    def add(): Unit = ()
 
     /** Update this node in the database */
-    def update(): Unit = {
-      assert(canInsert)
-      id.foreach(db.updateExecutionStep(_, asPOJO))
-    }
+    def update(): Unit = ()
 
-    /** Remove this node from the database */
-    def remove(): Unit = {
-      assert(canInsert)
-      id.foreach(db.deleteExecutionStep(proofId, _))
-      id = None
-    }
+    /** Remove this node and all of its descendants from the database */
+    def remove(): Unit = ()
 
     /** Starts a new child of this node running `executable` on `input`
       *
       * @return Some(child) unless this node is an atom that cannot have children
       */
-    def startChild(input: BelleValue, executable: BelleExpr): Option[StepNode] =
-      None
+    def startChild(input: BelleValue, executable: BelleExpr): Option[StepNode]
 
     /** Notifies that the currently running `child` of this node finished */
-    def finishChild(child: StepNode): Unit =
-      throw new AssertionError("Cannot finish a child on atomic node")
+    def finishChild(child: StepNode): Unit
+  }
+
+  /** A single atomic step that is inserted into the databse */
+  class AtomicStepNode(source: Option[StepPointer], parent: Option[StepNode], executable: BelleExpr)
+    extends StepNode(previous = source.toList, parent, executable) {
+
+    var id: Option[Int] = None
+
+    lazy val executableId: Int = db.addBelleExpr(executable)
+
+    val previousId: Option[Int] = source.map(_.step)
+    val branchOrder: Int = source.map(_.branch).getOrElse(0)
 
     protected def asPOJO: ExecutionStepPOJO =
       ExecutionStepPOJO(id, proofId, previousId, branchOrder, status, executableId, None, None, localProvableId,
         userExecuted = parent == null, ruleName, localNumSubgoals, localNumOpenSubgoals)
+
+    private var _localProvableId: Option[Int] = None
+
+    def localProvableId: Option[Int] = {
+      if (_local != null && _localProvableId.isEmpty)
+        _localProvableId = Some(db.createProvable(_local))
+      _localProvableId
+    }
+
+    override def next: List[StepPointer] =
+      if (local == null)
+        source.toList
+      else
+        id match {
+          case Some(step) =>
+            local.subgoals.indices.map(StepPointer(step, _)).toList
+          case _ =>
+            Nil
+        }
+
+    override def add(): Unit = {
+      assert(id.isEmpty)
+      id = Some(db.addExecutionStep(asPOJO))
+      allNodes = this :: allNodes
+    }
+
+    override def update(): Unit = {
+      id.foreach(db.updateExecutionStep(_, asPOJO))
+    }
+
+    override def remove(): Unit = {
+      id.foreach(db.deleteExecutionStep(proofId, _))
+      id = None
+    }
+
+    def startChild(input: BelleValue, executable: BelleExpr): Option[StepNode] =
+      None
+
+    def finishChild(child: StepNode): Unit =
+      throw new AssertionError("Cannot finish a child on atomic node")
   }
 
-  abstract class SequentialStepNode(previous: List[StepPointer], parent: Option[StepNode], executable: BelleExpr)
+  /**
+    * Abstract class describing nodes whose children should be linked together sequentially. You can think of this
+    * loosely as a path down the derivation tree if you ignore multiple tips
+    */
+  class SequentialStepNode(previous: List[StepPointer], parent: Option[StepNode], executable: BelleExpr)
     extends StepNode(previous, parent, executable) {
 
-    var previousPointer: List[StepPointer] = previous
+    protected var currentTip: List[StepPointer] = previous
+    protected var childrenFinished: Int = 0
+    protected var children: List[StepNode] = Nil
 
     override def startChild(input: BelleValue, executable: BelleExpr): Option[StepNode] = {
-      Some(makeNode(input, executable, Some(this), previousPointer))
+      val child = makeNode(input, executable, Some(this), currentTip)
+      children = child :: children
+      Some(child)
     }
 
     override def finishChild(child: StepNode): Unit = {
-      previousPointer = child.next
-      id = child.id
+      currentTip = child.next
+      childrenFinished += 1
     }
 
-    override def next: List[StepPointer] = previousPointer
+    override def remove(): Unit = {
+      children.foreach(_.remove())
+    }
 
-    override def add(): Unit = ()
-
-    override def update(): Unit = ()
-
-    override def remove(): Unit = ()
+    override def next: List[StepPointer] = currentTip
   }
 
   class SeqStepNode(previous: List[StepPointer], parent: Option[StepNode], executable: SeqTactic)
     extends SequentialStepNode(previous, parent, executable) {
 
-    private var finishedFirst: Boolean = false
-
     override def finishChild(child: StepNode): Unit = {
-      if (child.status == ExecutionStepStatus.Finished) {
-        finishedFirst = true
-      } else if (finishedFirst) {
-        failureRecorded = true
-        //@todo handle case when previousPointer is not a singleton
-        if (!child.failureRecorded) {
-          val notes =
-            if (previousPointer.length > 1) Some("Outside branch") else None
-          addPendingNode(notes, child.executable, this, previousPointer.last)
+      super.finishChild(child)
+
+      if (child.status != ExecutionStepStatus.Finished) {
+        if (childrenFinished > 1) {
+          // Failing on the second branch
+          failureRecorded = true
+          if (!child.failureRecorded)
+            currentTip = addPendingNode(executable.right, this, currentTip).next
+        } else if (child.failureRecorded) {
+          failureRecorded = true
+          // Failing on the first branch
+          // Record a second pending tactic on top of the first
+          currentTip = addPendingNode(executable.right, this, currentTip).next
         }
       }
-      super.finishChild(child)
     }
   }
 
   class SaturateStepNode(previous: List[StepPointer], parent: Option[StepNode], executable: SaturateTactic)
     extends SequentialStepNode(previous, parent, executable) {
+
+    override def finishChild(child: StepNode): Unit = {
+      if (child.status != ExecutionStepStatus.Finished) {
+        // If we didn't succeed, delete this child as if nothing happened
+        child.remove()
+        children = children.tail
+      } else {
+        super.finishChild(child)
+      }
+    }
   }
 
   class RepeatStepNode(previous: List[StepPointer], parent: Option[StepNode], executable: RepeatTactic)
     extends SequentialStepNode(previous, parent, executable) {
 
-    private var repeatsLeft: Int = executable.times
+    override def finishChild(child: StepNode): Unit = {
+      super.finishChild(child)
+
+      if (child.status != ExecutionStepStatus.Finished) {
+        failureRecorded = true
+        val times = executable.times - childrenFinished + (if (child.failureRecorded) 0 else 1)
+        if (times > 0) {
+          currentTip = addPendingNode(RepeatTactic(executable.child, times), this, currentTip).next
+        }
+      }
+    }
+  }
+
+  class OnAllNode(previous: List[StepPointer], parent: Option[StepNode], executable: OnAll)
+    extends SequentialStepNode(previous, parent, executable) {
 
     override def finishChild(child: StepNode): Unit = {
-      if (child.status == ExecutionStepStatus.Finished) {
-        repeatsLeft -= 1
-      } else {
-        failureRecorded = true
-        if (!child.failureRecorded)
-          addPendingNode(None, new RepeatTactic(executable.child, repeatsLeft), this, previousPointer.head)
-      }
       super.finishChild(child)
+      if (child.failureRecorded)
+        this.failureRecorded = true
     }
   }
 
@@ -348,19 +392,15 @@ class StepByStepRecordingListener(db: DBAbstraction,
       if (child.status != ExecutionStepStatus.Finished && !child.failureRecorded) {
         //@todo Record failures and successes to wrap entire branch if all children fail
         failureRecorded = true
-        addPendingNode(None, child.executable, this, stepsLeft.head)
+        val node = addPendingNode(child.executable, this, child.next)
+        allStepsRev = node.next.reverse ++ allStepsRev
+      } else {
+        allStepsRev = child.next.reverse ++ allStepsRev
       }
-      allStepsRev = child.next.reverse ++ allStepsRev
       stepsLeft = stepsLeft.tail
     }
 
     override def next: List[StepPointer] = allStepsRev.reverse
-
-    override def add(): Unit = ()
-
-    override def update(): Unit = ()
-
-    override def remove(): Unit = ()
   }
 
   //@todo Add nodes for EitherTactic and DependentTactics
@@ -375,18 +415,28 @@ class StepByStepRecordingListener(db: DBAbstraction,
         new RepeatStepNode(previous, parent, rep)
       case sat@SaturateTactic(_) =>
         new SaturateStepNode(previous, parent, sat)
-      case BranchTactic(_) | OnAll(_) =>
+      case onall@OnAll(_) =>
+        new OnAllNode(previous, parent, onall)
+      case BranchTactic(_) =>
         new BranchStepNode(previous, parent, executable)
-      case _ => new StepNode(previous, parent, executable)
+      case _ =>
+        //@note Atomic nodes can only have one predecessor
+        assert(previous.drop(1).isEmpty)
+        new AtomicStepNode(previous.headOption, parent, executable)
     }
   }
 
-  private def addPendingNode(notes: Option[String], executable: BelleExpr, parent: StepNode, previous: StepPointer): StepNode = {
-    val provable = db.getExecutionStep(proofId, previous.step).get.local.sub(previous.branch)
-    val node = new StepNode(List(previous), Some(parent), new PendingTactic(notes, executable))
+  private def addPendingNode(executable: BelleExpr, parent: StepNode, previous: List[StepPointer])
+  : StepNode = {
+    val target = previous.last
+    val provable = db.getExecutionStep(proofId, target.step).get.local.sub(target.branch)
+    val notes = if (previous.length > 1) Some("Outside branch") else None
+    val node = new AtomicStepNode(Some(target), Some(parent), PendingTactic(notes, executable))
+
     node.status = ExecutionStepStatus.Finished
     node.local = provable
     node.add()
+    node.update() //@note For some reason the addExecutionStep doesn't propagate the subgoals counts
     node
   }
 
@@ -457,7 +507,7 @@ class StepByStepRecordingListener(db: DBAbstraction,
     isDead = true
     allNodes.foreach(node => {
       node.status match {
-        case ExecutionStepStatus.DependsOnChildren | ExecutionStepStatus.Running if node.id.nonEmpty =>
+        case ExecutionStepStatus.DependsOnChildren | ExecutionStepStatus.Running =>
           node.status = ExecutionStepStatus.Aborted
           node.update()
       }
