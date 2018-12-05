@@ -159,6 +159,7 @@ angular.module('keymaerax.services').factory('sequentProofData', ['$http', '$roo
     /** The tactic model */
     tactic: {
       tacticText: "",
+      highlightedText: "",
       lastExecutedTacticText: "",
       currentSuggestions: undefined,
       tacticDiff: "",
@@ -167,8 +168,8 @@ angular.module('keymaerax.services').factory('sequentProofData', ['$http', '$roo
       fetch: function(userId, proofId) {
         var theTactic = this;
         $http.get('proofs/user/' + userId + '/' + proofId + '/extract').then(function (response) {
-          theTactic.tacticText = response.data.tacticText;
-          theTactic.lastExecutedTacticText = theTactic.tacticText;
+          theTactic.tacticText = theTactic.lastExecutedTacticText = response.data.tacticText;
+          theTactic.highlightedText = "";
           theTactic.tacticDiff = "";
           theTactic.tacticDel = "";
         })
@@ -179,6 +180,7 @@ angular.module('keymaerax.services').factory('sequentProofData', ['$http', '$roo
 
       reset: function() {
         this.tacticText = "";
+        this.highlightedText = "";
         this.lastExecutedTacticText = "";
         this.tacticDiff = "";
         this.tacticDel = "";

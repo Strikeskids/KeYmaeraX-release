@@ -1,6 +1,6 @@
 angular.module('keymaerax.ui.tacticeditor', ['ngSanitize', 'ngTextcomplete'])
-  .directive('k4TacticEditor', ['$http', 'derivationInfos', 'Textcomplete', 'sequentProofData',
-      function($http, derivationInfos, Textcomplete, sequentProofData) {
+  .directive('k4TacticEditor', ['$http', '$sce', 'derivationInfos', 'Textcomplete', 'sequentProofData',
+      function($http, $sce, derivationInfos, Textcomplete, sequentProofData) {
     return {
         restrict: 'AE',
         scope: {
@@ -18,8 +18,23 @@ angular.module('keymaerax.ui.tacticeditor', ['ngSanitize', 'ngTextcomplete'])
             isVisible: false
           }
 
+          scope.getRows = function(text) {
+            return (text.match(/\n/g) || '').length + 1
+          }
+
+          function html5Entities(value) {
+            return value.replace(/[\u00A0-\u9999<>\&\'\"]/gim, function(i) {
+              return '&#' + i.charCodeAt(0) + ';'
+            })
+          }
+
+          scope.$watchGroup(['tactic.tacticText', 'agenda.selectedId'], function() {
+            var tactic = scope.tactic
+            //@todo Highlight tactic
+          })
+
           var combinators = ['*', '|', ';', '<'];
-          var tacticContent = elem.find('#tacticcontent');
+          var tacticContent = elem.find('.k4-tactic-area');
           var textComplete = new Textcomplete(tacticContent, [
             // combinators
             {
@@ -144,8 +159,11 @@ angular.module('keymaerax.ui.tacticeditor', ['ngSanitize', 'ngTextcomplete'])
             }
           });
         },
-        template: '<div class="row k4-tacticeditor"><div class="col-md-12">' +
-                    '<div contenteditable id="tacticcontent" class="k4-tacticeditor" ng-model="tactic.tacticText" ng-shift-enter="executeTacticDiff(false)"></div>' +
+        template: '<div class="row"><div class="col-md-12">' +
+                    '<div class="k4-tactic-backdrop"><div class="k4-tactic-highlights" ng-bind-html="tactic.highlightedText"></div></div>' +
+                    '<textarea class="k4-tactic-area" ng-model="tactic.tacticText" ' +
+                        'ng-shift-enter="executeTacticDiff(false)" ng-trim="false" '+
+                        'rows="{{ getRows(tactic.tacticText) }}"></textarea>' +
                   '</div></div>' +
                   '<div class=row><div class="col-md-12">' +
                   '<k4-auto-hide-alert message="tacticError.text"' +

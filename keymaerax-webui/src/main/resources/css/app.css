@@ -455,18 +455,52 @@ del {
   border-bottom: 1px dashed var(--lsmain);
 }
 
+.k4-tactic-area {
+  font-family:monospace;
+  display: block;
+  width: 100%;
+  color: gray;
+  word-wrap: break-word;
+  overflow-y: hidden;
+  outline: 0px solid transparent;
+  padding: 0;
+  border: 0;
+  margin: 0;
+  resize: none;
+}
+
+.k4-tactic-backdrop {
+  overflow: visible;
+  height: 0;
+  width: 100%;
+  display: block;
+  color: transparent;
+}
+
+.k4-tactic-highlights {
+  font-family: monospace;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  width: 100%;
+}
+
+.k4-tactic-highlights mark {
+  color: transparent;
+  padding: 0;
+}
+
 .k4-tacticeditor, .k4-tacticeditor:focus {
   font-family:monospace;
   display: block;
   width: 100%;
   color: gray;
+  word-wrap: break-word;
   box-sizing: border-box;
   outline: 0px solid transparent;
   white-space: pre-wrap;       /* css-3 */
   white-space: -moz-pre-wrap;  /* Mozilla, since 1999 */
   white-space: -pre-wrap;      /* Opera 4-6 */
   white-space: -o-pre-wrap;    /* Opera 7 */
-  word-wrap: break-word;
 }
 
 .k4-modeleditor, .k4-modeleditor:focus {
