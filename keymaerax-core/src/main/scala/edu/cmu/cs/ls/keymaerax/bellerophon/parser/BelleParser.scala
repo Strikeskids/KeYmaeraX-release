@@ -139,6 +139,19 @@ object BelleParser extends (String => BelleExpr) with Logging {
       (innerExpr, oParenLoc.spanTo(cParenLoc), remainder)
   }
 
+  private def parsePendingExpr(loc: Location, tokens: List[BelleToken], tacticDefs: DefScope[String, DefTactic],
+                               exprDefs: DefScope[Expression, DefExpression], g: Option[Generator.Generator[Expression]],
+                               defs: Declaration ): (Option[String], BelleExpr, Location, List[BelleToken]) = tokens match {
+    case BelleToken(OPEN_PAREN, oParenLoc) :: BelleToken(e@EXPRESSION(_), _) :: BelleToken(COMMA, commaLoc) :: tail =>
+      val (inner, loc, rest) = parseInnerExpr(BelleToken(OPEN_PAREN, commaLoc)::tokens, tacticDefs, exprDefs, g, defs)
+      (Some(e.undelimitedExprString), inner, loc, rest)
+    case BelleToken(OPEN_PAREN, oParenLoc) :: _ =>
+      val (inner, loc, rest) = parseInnerExpr(tokens, tacticDefs, exprDefs, g, defs)
+      (None, inner, loc, rest)
+    case _ =>
+      throw ParseException("pending should be followed by (expression, tactic) or (tactic)", loc)
+  }
+
   private def parseStep(st: ParserState, tacticDefs: DefScope[String, DefTactic],
                         exprDefs: DefScope[Expression, DefExpression], g: Option[Generator.Generator[Expression]],
                         defs: Declaration): ParserState = {
@@ -294,8 +307,8 @@ object BelleParser extends (String => BelleExpr) with Logging {
 
       //region pending combinator
       case r :+ BelleToken(PENDING, loc) =>
-        val (innerExpr, innerLoc, remainder) = parseInnerExpr(st.input, tacticDefs, exprDefs, g, defs)
-        ParserState(r :+ ParsedBelleExpr(new PendingTactic(innerExpr), loc.spanTo(innerLoc)), remainder)
+        val (notes, innerExpr, innerLoc, remainder) = parsePendingExpr(loc, st.input, tacticDefs, exprDefs, g, defs)
+        ParserState(r :+ ParsedBelleExpr(PendingTactic(notes, innerExpr), loc.spanTo(innerLoc.end)), remainder)
       //endregion
 
       //region ? combinator
@@ -438,7 +451,7 @@ object BelleParser extends (String => BelleExpr) with Logging {
         else if(isIdent(st.input)) ParserState(stack :+ st.input.head, st.input.tail)
         else if(isOpenParen(st.input)) ParserState(stack :+ st.input.head, st.input.tail)
         else if(isProofStateToken(st.input)) ParserState(stack :+ st.input.head, st.input.tail)
-        else throw ParseException("Bellerophon programs should start with identifiers, open parens, or optional/doall/partial.", st.input.head.location)
+        else throw ParseException("Bellerophon programs should start with identifiers, open parens, or optional/doall/partial/pending.", st.input.head.location)
 
       case r :+ ParsedBelleExpr(e, _) => st.input.headOption match {
         case Some(_) => ParserState(st.stack :+ st.input.head, st.input.tail)
@@ -474,6 +487,7 @@ object BelleParser extends (String => BelleExpr) with Logging {
   private def isStartingCombinator(tok: BelleToken) = tok.terminal match {
     case OPTIONAL => true
     case ON_ALL => true
+    case PENDING => true
     case LET => true
     case TACTIC => true
     case DEF => true

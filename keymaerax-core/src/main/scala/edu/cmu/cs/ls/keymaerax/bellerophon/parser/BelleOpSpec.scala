@@ -44,6 +44,7 @@ object BelleOpSpec {
   val branch   = BelleBranchingOpSpec(BRANCH_COMBINATOR, 100, false, BranchTactic.apply)
   val partial  = BelleUnaryOpSpec(PARTIAL, 300, false)
   val onall    = BelleUnaryOpSpec(ON_ALL, 100, false)
+  val pending  = BelleUnaryOpSpec(PENDING, 100, false)
   val usubst   = BelleUSubstOpSpec(US_MATCH, 100, false, USubstPatternTactic.apply)
   val let      = BelleLetOpSpec(LET, 100, false, Let.apply)
   val defTactic      = BelleDefTacticOpSpec(TACTIC, 100, false, DefTactic.apply)
@@ -57,6 +58,7 @@ object BelleOpSpec {
     case e:PartialTactic  => partial
     case e:BranchTactic => branch
     case e:OnAll => onall
+    case e:PendingTactic => pending
     case e:USubstPatternTactic => usubst
     case e:BuiltInTactic       => base
     case e:AppliedPositionTactic => base

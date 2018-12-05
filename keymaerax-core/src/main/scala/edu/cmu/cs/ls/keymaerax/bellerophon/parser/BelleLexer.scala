@@ -75,6 +75,7 @@ object BelleLexer extends ((String) => List[BelleToken]) with Logging {
 
       //Stuff that could be confused as an identifier.
       case ON_ALL.startPattern(_*) => consumeTerminalLength(ON_ALL, loc)
+      case PENDING.startPattern(_*) => consumeTerminalLength(PENDING, loc)
       case US_MATCH.startPattern(_*) => consumeTerminalLength(US_MATCH, loc)
       case PARTIAL.startPattern(_*) => consumeTerminalLength(PARTIAL, loc)
       case LET.startPattern(_*) => consumeTerminalLength(LET, loc)

@@ -37,6 +37,10 @@ object BellePrettyPrinter extends (BelleExpr => String) {
           val eargs = it.inputs.map(input => argPrinter(Left(input))).mkString(", ")
           it.name + "(" + eargs + ")"
         case it: StringInputTactic if it.inputs.isEmpty => it.name
+        case PendingTactic(notes, c) =>
+          op(e).terminal.img + "(" +
+          notes.map(s => argPrinter(Left(s)) + ", ").getOrElse("") +
+          pp(c, indent) + ")"
         case b : BuiltInTactic => b.name
         case b: BuiltInPositionTactic => b.name
         case b: BuiltInLeftTactic => b.name
