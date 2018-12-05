@@ -182,12 +182,15 @@ class StepByStepRecordingListener(db: DBAbstraction,
   /** The node that is currently being executed */
   var node: Option[StepNode] = None
 
-  /** A list of all of the nodes that have been created. Used for aborting nodes if `kill`ed */
+  /** A list of all of the nodes that have been added to the DB. Used for aborting nodes if `kill`ed */
   var allNodes: List[StepNode] = Nil
 
   class StepNode(previous: List[StepPointer], val parent: Option[StepNode], val executable: BelleExpr) {
     var id: Option[Int] = None
     var status: ExecutionStepStatus = ExecutionStepStatus.Running
+
+    /** If this node failed, was its failure recorded to the DB */
+    var failureRecorded = false
 
     lazy val executableId: Int = db.addBelleExpr(executable)
 
@@ -229,6 +232,7 @@ class StepByStepRecordingListener(db: DBAbstraction,
     def add(): Unit = {
       assert(id.isEmpty && canInsert)
       id = Some(db.addExecutionStep(asPOJO))
+      allNodes = this :: allNodes
     }
 
     /** Update this node in the database */
@@ -260,7 +264,7 @@ class StepByStepRecordingListener(db: DBAbstraction,
         userExecuted = parent == null, ruleName, localNumSubgoals, localNumOpenSubgoals)
   }
 
-  class SeqStepNode(previous: List[StepPointer], parent: Option[StepNode], executable: BelleExpr)
+  abstract class SequentialStepNode(previous: List[StepPointer], parent: Option[StepNode], executable: BelleExpr)
     extends StepNode(previous, parent, executable) {
 
     var previousPointer: List[StepPointer] = previous
@@ -283,6 +287,48 @@ class StepByStepRecordingListener(db: DBAbstraction,
     override def remove(): Unit = ()
   }
 
+  class SeqStepNode(previous: List[StepPointer], parent: Option[StepNode], executable: SeqTactic)
+    extends SequentialStepNode(previous, parent, executable) {
+
+    private var finishedFirst: Boolean = false
+
+    override def finishChild(child: StepNode): Unit = {
+      if (child.status == ExecutionStepStatus.Finished) {
+        finishedFirst = true
+      } else if (finishedFirst) {
+        failureRecorded = true
+        //@todo handle case when previousPointer is not a singleton
+        if (!child.failureRecorded) {
+          val notes =
+            if (previousPointer.length > 1) Some("Outside branch") else None
+          addPendingNode(notes, child.executable, this, previousPointer.last)
+        }
+      }
+      super.finishChild(child)
+    }
+  }
+
+  class SaturateStepNode(previous: List[StepPointer], parent: Option[StepNode], executable: SaturateTactic)
+    extends SequentialStepNode(previous, parent, executable) {
+  }
+
+  class RepeatStepNode(previous: List[StepPointer], parent: Option[StepNode], executable: RepeatTactic)
+    extends SequentialStepNode(previous, parent, executable) {
+
+    private var repeatsLeft: Int = executable.times
+
+    override def finishChild(child: StepNode): Unit = {
+      if (child.status == ExecutionStepStatus.Finished) {
+        repeatsLeft -= 1
+      } else {
+        failureRecorded = true
+        if (!child.failureRecorded)
+          addPendingNode(None, new RepeatTactic(executable.child, repeatsLeft), this, previousPointer.head)
+      }
+      super.finishChild(child)
+    }
+  }
+
   class BranchStepNode(previous: List[StepPointer], parent: Option[StepNode], executable: BelleExpr)
     extends StepNode(previous, parent, executable) {
 
@@ -299,6 +345,11 @@ class StepByStepRecordingListener(db: DBAbstraction,
     }
 
     override def finishChild(child: StepNode): Unit = {
+      if (child.status != ExecutionStepStatus.Finished && !child.failureRecorded) {
+        //@todo Record failures and successes to wrap entire branch if all children fail
+        failureRecorded = true
+        addPendingNode(None, child.executable, this, stepsLeft.head)
+      }
       allStepsRev = child.next.reverse ++ allStepsRev
       stepsLeft = stepsLeft.tail
     }
@@ -318,12 +369,25 @@ class StepByStepRecordingListener(db: DBAbstraction,
                        parent: Option[StepNode], previous: List[StepPointer]
                       ): StepNode = {
     executable match {
-      case SeqTactic(_, _) | RepeatTactic(_, _) | SaturateTactic(_) =>
-        new SeqStepNode(previous, parent, executable)
+      case seq@SeqTactic(_, _) =>
+        new SeqStepNode(previous, parent, seq)
+      case rep@RepeatTactic(_, _) =>
+        new RepeatStepNode(previous, parent, rep)
+      case sat@SaturateTactic(_) =>
+        new SaturateStepNode(previous, parent, sat)
       case BranchTactic(_) | OnAll(_) =>
         new BranchStepNode(previous, parent, executable)
       case _ => new StepNode(previous, parent, executable)
     }
+  }
+
+  private def addPendingNode(notes: Option[String], executable: BelleExpr, parent: StepNode, previous: StepPointer): StepNode = {
+    val provable = db.getExecutionStep(proofId, previous.step).get.local.sub(previous.branch)
+    val node = new StepNode(List(previous), Some(parent), new PendingTactic(notes, executable))
+    node.status = ExecutionStepStatus.Finished
+    node.local = provable
+    node.add()
+    node
   }
 
   override def begin(input: BelleValue, expr: BelleExpr): Unit = this.synchronized {
@@ -338,7 +402,6 @@ class StepByStepRecordingListener(db: DBAbstraction,
     node match {
       case None =>
         val next = makeNode(input, expr, node, previousStep.toList)
-        allNodes = next :: allNodes
         next.add()
         node = Some(next)
 
@@ -350,7 +413,6 @@ class StepByStepRecordingListener(db: DBAbstraction,
             n.status = ExecutionStepStatus.DependsOnChildren
             n.update()
 
-            allNodes = next :: allNodes
             next.add()
             node = Some(next)
         }
@@ -395,7 +457,7 @@ class StepByStepRecordingListener(db: DBAbstraction,
     isDead = true
     allNodes.foreach(node => {
       node.status match {
-        case ExecutionStepStatus.DependsOnChildren | ExecutionStepStatus.Running =>
+        case ExecutionStepStatus.DependsOnChildren | ExecutionStepStatus.Running if node.id.nonEmpty =>
           node.status = ExecutionStepStatus.Aborted
           node.update()
       }

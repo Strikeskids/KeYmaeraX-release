@@ -38,7 +38,7 @@ class StepByStepRecordingListenerTest extends TacticTestBase {
       case Nil =>
         Leaf
       case ch :: _ =>
-        Node(BelleParser(ch.maker.get), tree.children.map(asTree).toSeq:_*)
+        Node(BelleParser(ch.maker.get), tree.children.map(asTree):_*)
     }
 
   def belleTree(tree: Tree[String]): Tree[BelleExpr] =
@@ -61,14 +61,14 @@ class StepByStepRecordingListenerTest extends TacticTestBase {
       belleTree(Node("andR(1)", Node("closeTrue", Leaf), Node("nil", Node("andR(1)", Node("closeTrue", Leaf), Node("nil", Leaf)))))
   }
 
-  "Failing tactics" should "not prevent other successes" in withDatabase { db =>
+  "Failing tactics" should "not prevent other successes while saving progress" in withDatabase { db =>
     val proofId = startProof(db, "true & true & true")
     executeAt(db, proofId, Nil, "andR(1); <( orR(1), andR(1) )")
     asTree(nodeAtProof(db, proofId, Nil)) shouldBe
-      belleTree(Node("andR(1)", Leaf, Node("andR(1)", Leaf, Leaf)))
+      belleTree(Node("andR(1)", Node("pending(orR(1))", Leaf), Node("andR(1)", Leaf, Leaf)))
   }
 
   sealed abstract class Tree[+A] {}
-  case class Node[+A](val x: A, val ch: Tree[A]*) extends Tree[A] {}
+  case class Node[+A](x: A, ch: Tree[A]*) extends Tree[A] {}
   case object Leaf extends Tree[Nothing] {}
 }
