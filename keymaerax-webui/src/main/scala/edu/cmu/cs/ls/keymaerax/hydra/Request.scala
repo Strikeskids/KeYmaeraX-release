@@ -2046,13 +2046,13 @@ class ShutdownReqeuest() extends LocalhostOnlyRequest with RegisteredOnlyRequest
 class ExtractTacticRequest(db: DBAbstraction, proofIdStr: String) extends Request with WriteRequest {
   override def resultingResponses(): List[Response] = {
     val tree = DbProofTree(db, proofIdStr)
-    val tactic = tree.tacticString
+    val (tactic, info) = ExtractTacticFromTrace.getTacticInfo(tree)
     // remember tactic string
     val newInfo = new ProofPOJO(tree.info.proofId, tree.info.modelId, tree.info.name, tree.info.description,
       tree.info.date, tree.info.stepCount, tree.info.closed, tree.info.provableId, tree.info.temporary,
       Some(tactic))
     db.updateProofInfo(newInfo)
-    GetTacticResponse(DbProofTree(db, proofIdStr).tacticString) :: Nil
+    ExtractTacticResponse(tactic, info) :: Nil
   }
 }
 

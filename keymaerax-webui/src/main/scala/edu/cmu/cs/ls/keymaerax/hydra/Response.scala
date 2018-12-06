@@ -652,7 +652,27 @@ object Helpers {
     case c: ProgramConst => print(c.prettyString)::Nil
   }
 
+  def locationJson(loc: Location): JsValue = loc match {
+    case UnknownLocation => JsNull
+    case Region(sl, sc, el, ec) =>
+      JsObject(
+        "startRow" -> new JsNumber(sl),
+        "startCol" -> new JsNumber(sc),
+        "endRow" -> new JsNumber(el),
+        "endCol" -> new JsNumber(ec)
+      )
+    case SuffixRegion(sl, sc) =>
+      JsObject(
+        "startRow" -> new JsNumber(sl),
+        "startCol" -> new JsNumber(sc)
+      )
+  }
 
+  def locatorJson(loc: TacticLocator): JsValue = JsObject(
+    "node" -> JsString(loc.node.toString),
+    "tactic" -> JsString(loc.tactic),
+    "location" -> locationJson(loc.loc)
+  )
 
   /** Only first node's sequent is printed. */
   def nodesJson(nodes: List[ProofTreeNode]): List[(String, JsValue)] = {
@@ -1240,6 +1260,15 @@ class NodeResponse(tree : String) extends Response {
 case class GetTacticResponse(tacticText: String) extends Response {
   def getJson = JsObject(
     "tacticText" -> JsString(tacticText)
+  )
+}
+
+case class ExtractTacticResponse(tacticText: String, locators: List[TacticLocator]) extends Response {
+  def getJson = JsObject(
+    "tacticText" -> JsString(tacticText),
+    "tacticLocators" -> JsObject(
+      locators.map(loc => (loc.node.toString, locatorJson(loc)))
+    )
   )
 }
 
