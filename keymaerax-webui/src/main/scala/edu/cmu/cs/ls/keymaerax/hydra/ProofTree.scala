@@ -354,7 +354,10 @@ case class DbLoadedProofTreeNode(db: DBAbstraction,
   }
 
   /** The number of subgoals in the local provable (fast, doesn't actually load the provable). */
-  override def numSubgoals: Int = localProvable.subgoals.size
+  override def numSubgoals: Int = step match {
+    case None => 1 //@note root provable
+    case Some(s) => s.subgoalsCount
+  }
 
   /** Execution step recording: predecessor step ID. */
   override protected def stepId: Option[Int] = step.map(_.stepId)
@@ -447,7 +450,7 @@ case class DbProofTree(db: DBAbstraction, override val proofId: String) extends 
   }
 
   /** All proof nodes, in order of step execution. */
-  override def nodes: List[ProofTreeNode] = { load(); loadedNodes }
+  override def nodes: List[ProofTreeNode] = { if (loadedNodes.isEmpty) load(); loadedNodes }
 
   /** The tactic to produce this tree from its root conclusion. */
   override def tacticString: String = { load(); ExtractTacticFromTrace.getTacticString(this) }
