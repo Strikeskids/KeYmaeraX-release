@@ -18,7 +18,7 @@ object BelleLexer extends ((String) => List[BelleToken]) with Logging {
     //Avoids importing a thing with lots of potential name clashes.
     val correctedInput = edu.cmu.cs.ls.keymaerax.parser.KeYmaeraXLexer.normalizeNewlines(s)
     //@todo not sure if this position is Ok. This is what's used in the KeYmaera X lexer.
-    val startingLocation = SuffixRegion(1,1)
+    val startingLocation = Location.Everything
 
     logger.debug("LEX: " + correctedInput)
     lex(s, startingLocation)
@@ -47,24 +47,22 @@ object BelleLexer extends ((String) => List[BelleToken]) with Logging {
     /** Helper method for findNextToken */
     def consumeTerminalLength(terminal: BelleTerminal, location: Location) = {
       val token = terminal.img
-      advanceRegion(location, token) match {
-        case (tokenRegion, nextRegion) =>
-          Some((
-            input.substring(token.length),
-            BelleToken(terminal, tokenRegion),
-            nextRegion
-          ))
-      }
+      val (tokenRegion, nextRegion) = location.advanceBy(token)
+      Some(
+        input.substring(token.length),
+        BelleToken(terminal, tokenRegion),
+        nextRegion
+      )
     }
 
     input match {
       //Comments, newlines, and white-space. These are all copied from the KeYmaera X lexer.
       case comment(theComment) =>
         val comment = input.substring(0, theComment.length)
-        findNextToken(input.substring(theComment.length), advanceRegion(loc, theComment)._2)
+        findNextToken(input.substring(theComment.length), loc.advanceBy(theComment)._2)
 
       case newline(_*) =>
-        findNextToken(input.tail, advanceRegion(loc, "\n")._2)
+        findNextToken(input.tail, loc.advanceBy("\n")._2)
 
       case whitespace(spaces) =>
         findNextToken(input.substring(spaces.length), loc match {
@@ -128,26 +126,4 @@ object BelleLexer extends ((String) => List[BelleToken]) with Logging {
   //@note Assuming all newlines are just \n is OK because we normalize newlines prior to lexing.
   private val newline = """(?s)(^\n)[\s\S]*""".r
   private val comment = """(?s)(^/\*[\s\S]*?\*/)[\s\S]*""".r
-
-  /**
-    * Compute the two regions corresponding to a consumed token
-    * @param loc The location of the consumed token
-    * @param consumed The token that was consumed
-    * @return (The region corresponding to the token, The region after the token)
-    */
-  private def advanceRegion(loc: Location, consumed: String): (Location, Location) = {
-    val length = consumed.length()
-    val lines = consumed.count(_ == '\n')
-    val lastLineLength = length - consumed.lastIndexOf('\n') - 1
-    loc match {
-      case UnknownLocation => (UnknownLocation, UnknownLocation)
-      case Region(sl, sc, el, ec) =>
-        val lastLinePos = if (lines == 0) sc + length else lastLineLength + 1
-        (Region(sl, sc, sl + lines, lastLinePos), Region(sl + lines, lastLinePos, el, ec))
-      case SuffixRegion(sl, sc) =>
-        val lastLinePos = if (lines == 0) sc + length else lastLineLength + 1
-        (Region(sl, sc, sl + lines, lastLinePos), SuffixRegion(sl + lines, lastLinePos))
-    }
-  }
-
 }
