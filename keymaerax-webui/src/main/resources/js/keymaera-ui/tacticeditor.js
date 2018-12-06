@@ -28,9 +28,68 @@ angular.module('keymaerax.ui.tacticeditor', ['ngSanitize', 'ngTextcomplete'])
             })
           }
 
-          scope.$watchGroup(['tactic.tacticText', 'agenda.selectedId'], function() {
+          function highlight(text, regions) {
+            regions.sort(function(a, b) {
+              if (a.startRow === b.startRow) {
+                return a.startCol - b.startCol;
+              } else {
+                return a.startRow - b.startRow;
+              }
+            })
+            var result = ''
+            for (var i = 0, rj = 0, col = 1, row = 1, highlighting = false; i < text.length; ++i) {
+              while (rj < regions.length
+                  && regions[rj].endRow <= row && regions[rj].endCol <= col) {
+                if (highlighting) {
+                  result += '</mark>'
+                  highlighting = false
+                }
+                rj++;
+              }
+              var region = regions[rj]
+              if (!highlighting && region !== undefined && region.startRow <= row && region.startCol <= col) {
+                result += '<mark>'
+                highlighting = true
+              }
+              if (text[i] == '\n') {
+                row++;
+                col = 1;
+              } else {
+                col++;
+              }
+              result += html5Entities(text[i])
+            }
+
+            if (highlighting) {
+              result += "</mark>";
+            }
+
+            return $sce.trustAs($sce.HTML, result)
+          }
+
+          scope.$watchGroup(['tactic.tacticText', 'nodeId'], function() {
             var tactic = scope.tactic
-            //@todo Highlight tactic
+            var tree = sequentProofData.proofTree
+            if (tactic.tacticText !== tactic.lastExecutedTacticText) {
+              //@todo Highlight modified tactics
+              tactic.highlightedText = ''
+              return
+            }
+            var history = []
+            for (var id = scope.nodeId; id; ) {
+              history.push(id)
+              var node = tree.node(id)
+              id = node && node.parent
+            }
+            var highlightRegions =
+              $.grep(
+                $.map(history, function(id) {
+                  var loc = tactic.tacticLocators[id];
+                  return loc && loc.location
+                }),
+                function(x) { return !!x },
+              )
+            tactic.highlightedText = highlight(tactic.tacticText, highlightRegions)
           })
 
           var combinators = ['*', '|', ';', '<'];

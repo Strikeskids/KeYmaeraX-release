@@ -467,6 +467,7 @@ del {
   border: 0;
   margin: 0;
   resize: none;
+  background-color: transparent;
 }
 
 .k4-tactic-backdrop {

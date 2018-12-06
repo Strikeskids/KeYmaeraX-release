@@ -108,7 +108,7 @@ angular.module('keymaerax.services').factory('ProofTree', function() {
             this.nodesMap[node.id] = node;
           } else {
             this.nodesMap[node.id].children = node.children;
-            this.nodesMap[node.id].rule = node.rule;
+            if (node.rule) this.nodesMap[node.id].rule = node.rule;
           }
         },
         /** Returns the proof tree root. */
@@ -164,11 +164,13 @@ angular.module('keymaerax.services').factory('sequentProofData', ['$http', '$roo
       currentSuggestions: undefined,
       tacticDiff: "",
       tacticDel: "",
+      tacticLocators: {},
 
       fetch: function(userId, proofId) {
         var theTactic = this;
         $http.get('proofs/user/' + userId + '/' + proofId + '/extract').then(function (response) {
           theTactic.tacticText = theTactic.lastExecutedTacticText = response.data.tacticText;
+          theTactic.tacticLocators = response.data.tacticLocators;
           theTactic.highlightedText = "";
           theTactic.tacticDiff = "";
           theTactic.tacticDel = "";
@@ -185,6 +187,7 @@ angular.module('keymaerax.services').factory('sequentProofData', ['$http', '$roo
         this.tacticDiff = "";
         this.tacticDel = "";
         this.currentSuggestions = undefined;
+        this.tacticLocators = {};
       }
     },
 
