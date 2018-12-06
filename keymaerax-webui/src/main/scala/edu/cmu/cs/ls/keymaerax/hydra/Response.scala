@@ -10,29 +10,23 @@
  */
 package edu.cmu.cs.ls.keymaerax.hydra
 
-import edu.cmu.cs.ls.keymaerax.btactics._
-import edu.cmu.cs.ls.keymaerax.btactics.Augmentors._
-import edu.cmu.cs.ls.keymaerax.core.{Expression, Formula}
-import edu.cmu.cs.ls.keymaerax.bellerophon._
-import edu.cmu.cs.ls.keymaerax.core._
-import edu.cmu.cs.ls.keymaerax.parser._
-
-import spray.json._
-import DefaultJsonProtocol._
-import akka.http.scaladsl.marshalling.ToResponseMarshallable
-import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
-import akka.http.scaladsl.marshallers.xml.ScalaXmlSupport._
-
 import java.io.{PrintWriter, StringWriter}
 
-import Helpers._
+import akka.http.scaladsl.marshallers.xml.ScalaXmlSupport._
+import akka.http.scaladsl.marshalling.ToResponseMarshallable
+import edu.cmu.cs.ls.keymaerax.bellerophon._
 import edu.cmu.cs.ls.keymaerax.bellerophon.parser.{BelleParser, BellePrettyPrinter}
-import edu.cmu.cs.ls.keymaerax.codegen.{CGenerator, CMonitorGenerator}
+import edu.cmu.cs.ls.keymaerax.btactics.Augmentors._
+import edu.cmu.cs.ls.keymaerax.btactics._
+import edu.cmu.cs.ls.keymaerax.core.{Expression, Formula, _}
+import edu.cmu.cs.ls.keymaerax.hydra.Helpers._
+import edu.cmu.cs.ls.keymaerax.parser._
 import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
 import org.apache.logging.log4j.scala.Logging
+import spray.json._
 
-import scala.collection.mutable.ListBuffer
 import scala.collection.immutable
+import scala.collection.mutable.ListBuffer
 import scala.util.Try
 import scala.util.matching.Regex.Match
 import scala.xml.Elem
@@ -666,28 +660,34 @@ object Helpers {
     else nodeJson(nodes.head) +: nodes.tail.map(nodeJson(_, withSequent=false))
   }
 
-  def nodeJson(node: ProofTreeNode, withSequent: Boolean = true): (String, JsValue) = {
+  def nodeJson(node: ProofTreeNode, withRule: Boolean = true, withSequent: Boolean = true): (String, JsValue) = {
     val id = JsString(node.id.toString)
     val sequent =
       if (withSequent) node.goal match { case None => JsNull case Some(goal) => sequentJson(goal) }
       else JsNull
     val childrenIds = JsArray(node.children.map(s => JsString(s.id.toString)):_*)
-    val parent = node.parent.map(n => JsString(n.id.toString)).getOrElse(JsNull)
 
-    val posLocator =
-      if (node.maker.isEmpty) None
-      else BelleParser(node.maker.get) match { //@todo probably performance bottleneck
-        case pt: AppliedPositionTactic => Some(pt.locator)
-        case pt: AppliedDependentPositionTactic => Some(pt.locator)
-        case _ => None
-      }
+    val rule =
+      if (withRule) {
+        val posLocator =
+          if (node.maker.isEmpty) None
+          else BelleParser(node.maker.get) match { //@todo probably performance bottleneck
+            case pt: AppliedPositionTactic => Some(pt.locator)
+            case pt: AppliedDependentPositionTactic => Some(pt.locator)
+            case _ => None
+          }
+        ruleJson(node.makerShortName.getOrElse(""), posLocator)
+      } else
+        JsNull
+    val parent = node.parent.map(n => JsString(n.id.toString)).getOrElse(JsNull)
 
     (node.id.toString, JsObject(
       "id" -> id,
+      //@todo Should this be numOpenSubgoals?
       "isClosed" -> JsBoolean(node.numSubgoals <= 0),
       "sequent" -> sequent,
       "children" -> childrenIds,
-      "rule" -> ruleJson(node.makerShortName.getOrElse(""), posLocator),
+      "rule" -> rule,
       "parent" -> parent))
   }
 
@@ -742,12 +742,18 @@ object Helpers {
   }
 }
 
-case class AgendaAwesomeResponse(proofId: String, root: ProofTreeNode, leaves: List[ProofTreeNode],
+case class AgendaAwesomeResponse(proofId: String, root: ProofTreeNode,
+                                 leaves: List[ProofTreeNode],
+                                 nodes: List[ProofTreeNode],
                                  agenda: List[AgendaItem], closed: Boolean) extends Response {
   override val schema = Some("agendaawesome.js")
 
   private lazy val proofTree = {
-    val theNodes: List[(String, JsValue)] = nodeJson(root, withSequent=false) +: nodesJson(leaves)
+    val theNodes: List[(String, JsValue)] =
+      nodeJson(root, withSequent = false) ::
+        nodes.map(nodeJson(_, withSequent = false, withRule = false)) ++
+        leaves.drop(1).map(nodeJson(_, withSequent = false)) ++
+        leaves.headOption.map(nodeJson(_)).toList
     JsObject(
       "id" -> proofIdJson(proofId),
       "nodes" -> JsObject(theNodes.toMap),

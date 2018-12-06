@@ -1255,7 +1255,7 @@ class GetAgendaAwesomeRequest(db : DBAbstraction, userId : String, proofId : Str
 
     val agendaItems: List[AgendaItem] = leaves.map(n =>
       AgendaItem(n.id.toString, "Goal: " + agendaItemName(n.makerShortName.getOrElse("").split("\\(").head), proofId))
-    AgendaAwesomeResponse(proofId, tree.root, leaves, agendaItems, closed) :: Nil
+    AgendaAwesomeResponse(proofId, tree.root, leaves, tree.nodes, agendaItems, closed) :: Nil
   }
 }
 
@@ -1270,7 +1270,7 @@ class GetProofRootAgendaRequest(db: DBAbstraction, userId: String, proofId: Stri
   override protected def doResultingResponses(): List[Response] = {
     val tree: ProofTree = DbProofTree(db, proofId)
     val agendaItems: List[AgendaItem] = AgendaItem(tree.root.id.toString, "Unnamed Goal", proofId) :: Nil
-    AgendaAwesomeResponse(proofId, tree.root, tree.root::Nil, agendaItems, closed=false) :: Nil
+    AgendaAwesomeResponse(proofId, tree.root, tree.root::Nil, Nil, agendaItems, closed=false) :: Nil
   }
 }
 
