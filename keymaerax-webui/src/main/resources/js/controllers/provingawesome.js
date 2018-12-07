@@ -121,7 +121,9 @@ angular.module('keymaerax.controllers').controller('ProofCtrl',
       if ($scope.proofId === taskResult.proofId) {
         if ($scope.runningTask.nodeId === taskResult.parent.id) {
           $rootScope.$broadcast('proof.message', { textStatus: "", errorThrown: "" });
-          sequentProofData.updateAgendaAndTree($scope.userId, taskResult.proofId, taskResult);
+          //@todo Fix the response from taskResult so that this update will work properly
+          // sequentProofData.updateAgendaAndTree($scope.userId, taskResult.proofId, taskResult);
+          sequentProofData.fetchAgenda($scope, $scope.userId, $scope.proofId);
           sequentProofData.tactic.fetch($scope.userId, taskResult.proofId);
         } else {
           showMessage($uibModal, "Unexpected tactic result, parent mismatch: expected " +
@@ -162,7 +164,20 @@ angular.module('keymaerax.controllers').controller('ProofCtrl',
       $scope.runningTask.future.promise.then(
         /* future resolved */ function(taskId) {
           $http.get('proofs/user/' + $scope.userId + '/' + $scope.runningTask.proofId + '/' + $scope.runningTask.nodeId + '/' + taskId + '/result')
-            .then(function(response) { onTaskComplete(response.data); })
+            .then(function(response) { 
+              if ($.isArray(response.data)) {
+                $.each(response.data, function(i, data) {
+                  if (data.type === 'error') {
+                    // Error expects the full response object
+                    onTaskError($.extend({}, response, {data: data}));
+                  } else {
+                    onTaskComplete(data);
+                  }
+                })
+              } else {
+                onTaskComplete(response.data);
+              }
+            })
             .catch(function(err) { onTaskError(err); })
             .finally(function() { spinnerService.hide('tacticExecutionSpinner'); });
         },
