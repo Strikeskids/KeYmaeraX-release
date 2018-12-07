@@ -30,16 +30,16 @@ angular.module('keymaerax.ui.tacticeditor', ['ngSanitize', 'ngTextcomplete'])
 
           function highlight(text, regions) {
             regions.sort(function(a, b) {
-              if (a.startRow === b.startRow) {
-                return a.startCol - b.startCol;
+              if (a.location.startRow === b.location.startRow) {
+                return a.location.startCol - b.location.startCol;
               } else {
-                return a.startRow - b.startRow;
+                return a.location.startRow - b.location.startRow;
               }
             })
             var result = ''
             for (var i = 0, rj = 0, col = 1, row = 1, highlighting = false; i < text.length; ++i) {
               while (rj < regions.length
-                  && regions[rj].endRow <= row && regions[rj].endCol <= col) {
+                  && regions[rj].location.endRow <= row && regions[rj].location.endCol <= col) {
                 if (highlighting) {
                   result += '</mark>'
                   highlighting = false
@@ -47,8 +47,8 @@ angular.module('keymaerax.ui.tacticeditor', ['ngSanitize', 'ngTextcomplete'])
                 rj++;
               }
               var region = regions[rj]
-              if (!highlighting && region !== undefined && region.startRow <= row && region.startCol <= col) {
-                result += '<mark>'
+              if (!highlighting && region !== undefined && region.location.startRow <= row && region.location.startCol <= col) {
+                result += '<mark class="' + region.class + '">'
                 highlighting = true
               }
               if (text[i] == '\n') {
@@ -83,11 +83,14 @@ angular.module('keymaerax.ui.tacticeditor', ['ngSanitize', 'ngTextcomplete'])
             }
             var highlightRegions =
               $.grep(
-                $.map(history, function(id) {
+                $.map(history, function(id, i) {
                   var loc = tactic.tacticLocators[id];
-                  return loc && loc.location
+                  return {
+                    location: loc && loc.location,
+                    class: 'active-tactic' + (i === 0 ? ' last-tactic' : ''),
+                  };
                 }),
-                function(x) { return !!x },
+                function(x) { return !!x.location; },
               )
             tactic.highlightedText = highlight(tactic.tacticText, highlightRegions)
           })
@@ -222,7 +225,7 @@ angular.module('keymaerax.ui.tacticeditor', ['ngSanitize', 'ngTextcomplete'])
                     '<div class="k4-tactic-backdrop"><div class="k4-tactic-highlights" ng-bind-html="tactic.highlightedText"></div></div>' +
                     '<textarea class="k4-tactic-area" ng-model="tactic.tacticText" ' +
                         'ng-shift-enter="executeTacticDiff(false)" ng-trim="false" '+
-                        'rows="{{ getRows(tactic.tacticText) }}"></textarea>' +
+                        'rows="{{ getRows(tactic.tacticText) }}" spellcheck="false"></textarea>' +
                   '</div></div>' +
                   '<div class=row><div class="col-md-12">' +
                   '<k4-auto-hide-alert message="tacticError.text"' +
