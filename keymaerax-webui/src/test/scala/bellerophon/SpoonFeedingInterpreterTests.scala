@@ -782,20 +782,16 @@ class SpoonFeedingInterpreterTests extends TacticTestBase {
     val proofId = db.createProof(modelContent)
 
     val tree = DbProofTree(db.db, proofId.toString)
-    tree.locate("()") match {
-      case Some(n) => n.runTactic(db.user.userName, ExhaustiveSequentialInterpreter, implyR(1), "implyR(1)", wait=true)
-    }
+    tree.root.runTactic(db.user.userName, ExhaustiveSequentialInterpreter, implyR(1), "implyR(1)", wait=true)
 
-    tree.locate("(1,0)") match {
-      case Some(n) =>
-        val startStepIndex = n.id match {
-          case DbStepPathNodeId(id, _) => db.db.getExecutionSteps(proofId.toInt).indexWhere(_.stepId == id)
-        }
-        val interpreter = registerInterpreter(SpoonFeedingInterpreter(proofId, startStepIndex, db.db.createProof,
-          listener(db.db), ExhaustiveSequentialInterpreter))
-        val tactic = BelleParser("dC({`x>=old(x)`}, 1)")
-        n.stepTactic(db.user.userName, interpreter, tactic, wait=true)
+    val Some(n) = tree.locate("(1,0)")
+    val startStepIndex = n.id match {
+      case DbStepPathNodeId(id, _) => db.db.getExecutionSteps(proofId.toInt).indexWhere(_.stepId == id)
     }
+    val interpreter = registerInterpreter(SpoonFeedingInterpreter(proofId, startStepIndex, db.db.createProof,
+      listener(db.db), ExhaustiveSequentialInterpreter))
+    val tactic = BelleParser("dC({`x>=old(x)`}, 1)")
+    interpreter(tactic, BelleProvable(n.localProvable.sub(n.goalIdx)))
 
     tree.tactic shouldBe BelleParser("implyR(1); dC({`x>=old(x)`}, 1); <(nil, nil)")
   }}
