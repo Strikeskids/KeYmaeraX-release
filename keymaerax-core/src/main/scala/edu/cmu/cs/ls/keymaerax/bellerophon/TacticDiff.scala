@@ -110,6 +110,13 @@ object TacticDiff {
         (ReplacementBelleContext(p), Map(p -> t1), Map(p -> t2))
     }
     // atomic cases
+    case PendingTactic(notes1, c1) => t2 match {
+      case PendingTactic(notes2, c2) if notes1 == notes2 && c1 == c2 =>
+        (ReplacementBelleContext(PendingTactic(notes1, c1)), Map[BelleDot, BelleExpr](), Map[BelleDot, BelleExpr]())
+      case _ =>
+        val p = new BelleDot()
+        (ReplacementBelleContext(p), Map(p -> t1), Map(p -> t2))
+    }
     case BuiltInTactic(n1) => t2 match {
       case BuiltInTactic(n2) if n1 == n2 => (ReplacementBelleContext(t1), Map[BelleDot, BelleExpr](), Map[BelleDot, BelleExpr]())
       case SeqTactic(n2l, n2r) if t1 == n2l =>
