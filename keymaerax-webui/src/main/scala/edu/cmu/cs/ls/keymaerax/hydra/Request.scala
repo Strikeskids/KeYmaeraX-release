@@ -1729,6 +1729,24 @@ class RunBelleTermRequest(db: DBAbstraction, userId: String, proofId: String, no
                 if (consultAxiomInfo) RequestHelper.getSpecificName(belleTerm, sequent, pos, pos2, _ => appliedExpr.prettyString)
                 else "custom"
 
+              if (node.children.nonEmpty) {
+                if (consultAxiomInfo)
+                  return new ErrorResponse("Attempting to run a tactic at a non-leaf node") :: Nil
+                ExtractTacticFromTrace.differenceRoot(appliedExpr, node) match {
+                  case None =>
+                    return new ErrorResponse("No difference in the tactic") :: Nil
+                  case Some((newTactic, diffRoot)) =>
+                    diffRoot.pruneBelow()
+                    val taskId =
+                      if (stepwise) {
+                        diffRoot.stepTactic(userId, ExhaustiveSequentialInterpreter, newTactic, "custom")
+                      } else {
+                        diffRoot.runTactic(userId, ExhaustiveSequentialInterpreter, newTactic, "custom")
+                      }
+                    return RunBelleTermResponse(proofId, node.id.toString, taskId) :: Nil
+                }
+              }
+
               def stepByStepInterpreter(proofId: Int, startStep: Option[StepPointer]): Interpreter = {
                 new ExhaustiveSequentialInterpreter(
                   new StepByStepRecordingListener(db, proofId, startStep, ruleName) :: Nil)
@@ -1737,11 +1755,6 @@ class RunBelleTermRequest(db: DBAbstraction, userId: String, proofId: String, no
               if (stepwise) {
                 if (ruleName == "custom") {
                   //@note execute tactic scripts step-by-step for better browsing
-                  val startStep = node.id match {
-                    case DbStepPathNodeId(id, _) => id.map(StepPointer(_, node.goalIdx))
-                    case _ => throw new Exception("Unexpected node ID shape " + node.id.toString
-                      + ". Expected step path ID of the form (node ID,branch index)")
-                  }
                   val taskId = node.stepTactic(userId, ExhaustiveSequentialInterpreter, appliedExpr, ruleName)
                   RunBelleTermResponse(proofId, node.id.toString, taskId) :: Nil
                 } else {
@@ -1834,11 +1847,11 @@ class TaskResultRequest(db: DBAbstraction, userId: String, proofId: String, node
         case Some(Left(BelleProvable(_, _))) =>
           val tree = DbProofTree(db, proofId)
           tree.locate(nodeId) match {
-            case None => new ErrorResponse("Unknown node " + nodeId)
+            case None => new ErrorResponse("Unknown node " + nodeId) :: Nil
             case Some(node) =>
               //@todo construct provable (expensive!)
               //assert(noBogusClosing(tree, node), "Server thinks a goal has been closed when it clearly has not")
-              TaskResultResponse(proofId, node, progress=true)
+              TaskResultResponse(proofId, node, progress=true) :: Nil
           }
 //          val positionLocator = if (parentNode.children.isEmpty) None else RequestHelper.stepPosition(db, parentNode.children.head)
 //          assert(noBogusClosing(finalTree, parentNode), "Server thinks a goal has been closed when it clearly has not")
@@ -1850,13 +1863,18 @@ class TaskResultRequest(db: DBAbstraction, userId: String, proofId: String, node
           val node = tree.root//findNode(nodeId).get
           //val positionLocator = if (parentNode.subgoals.isEmpty) None else RequestHelper.stepPosition(db, parentNode.children.head)
           assert(noBogusClosing(tree, node), "Server thinks a goal has been closed when it clearly has not")
-          TaskResultResponse(subId.toString, node, progress = true)
-        case Some(Right(error: BelleThrowable)) => new ErrorResponse("Tactic failed with error: " + error.getMessage, error.getCause)
-        case None => new ErrorResponse("Could not get tactic result - execution cancelled? ")
+          TaskResultResponse(subId.toString, node, progress = true) :: Nil
+        case Some(Right(error: BelleThrowable)) =>
+          val tree = DbProofTree(db, proofId)
+          val successResponse: Option[Response] =
+            tree.locate(nodeId).filter(_.children.nonEmpty).map(TaskResultResponse(proofId, _))
+          new ErrorResponse("Tactic failed with error: " + error.getMessage, error.getCause) ::
+            successResponse.toList
+        case None => new ErrorResponse("Could not get tactic result - execution cancelled? ") :: Nil
       }
       //@note may have been cancelled in the meantime
       executor.tryRemove(taskId)
-      response :: Nil
+      response
     }
   }
 }

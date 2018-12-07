@@ -109,6 +109,44 @@ object ExtractTacticFromTrace {
       case ((reg, rest), s) =>
         (reg + s.tacticPart.length, rest)
     }._2.reverse
+
+  /** Find the root of the difference between the tactic of `node` and `tactic` */
+  def differenceRoot(tactic: BelleExpr, node: ProofTreeNode): Option[(BelleExpr, ProofTreeNode)] = {
+    differenceRootHelper(tactic, node)
+  }
+
+  /**
+    * Find the root of the difference between the two tactics.
+    *
+    * @param compare The tactic we are comparing with
+    * @return
+    */
+  private def differenceRootHelper(compare: BelleExpr, node: ProofTreeNode): Option[(BelleExpr, ProofTreeNode)] = {
+    val mine = tacticAt(None, node)
+    compare match {
+      case `mine` if node.children.size <= 1 && node.children.headOption.flatMap(_.action).isEmpty =>
+        //@note Our (potential) child is a leaf and we match the comparison
+        None
+      case SeqTactic(cmpLeft, cmpRest) if mine == cmpLeft =>
+        cmpRest match {
+          case BranchTactic(cmpBs) if cmpBs.size == node.children.size =>
+            // Branching deduction where we need to recurse
+            (cmpBs zip node.children).map((differenceRootHelper _).tupled).flatMap(_.toList) match {
+              case Nil => None
+              case child :: Nil => Some(child)
+              case _ => Some(compare, node) //@note multiple differing children mean we need to run from the current node
+            }
+          case _ if node.children.size == 1 =>
+            // Normal sequential deduction
+            differenceRootHelper(cmpRest, node.children.head)
+          case _ =>
+            // Incompatible deductions, so the error must be at this node
+            Some(compare, node)
+        }
+      case _ =>
+        Some(compare, node)
+    }
+  }
 }
 
 private sealed abstract class TacticStringifier {
