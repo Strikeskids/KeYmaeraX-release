@@ -5,7 +5,8 @@ function showCaughtErrorMessage(modal, data, message) {
     controller: 'ErrorAlertCtrl',
     size: 'lg',
     resolve: {
-      action: function () { return message; },
+      url: function() { return '<unknown>'; },
+      message: function () { return message; },
       error: function () { return data; },
       context: function () { return {}; }
     }
