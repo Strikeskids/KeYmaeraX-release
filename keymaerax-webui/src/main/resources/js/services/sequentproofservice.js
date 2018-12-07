@@ -173,6 +173,8 @@ angular.module('keymaerax.services').factory('sequentProofData', ['$http', '$roo
       fetch: function(userId, proofId) {
         var theTactic = this;
         $http.get('proofs/user/' + userId + '/' + proofId + '/extract').then(function (response) {
+          if (theTactic.tacticText === response.data.tacticText && theTactic.lastExecutedTacticText === response.data.tacticText)
+            return;
           theTactic.tacticText = theTactic.lastExecutedTacticText = response.data.tacticText;
           theTactic.tacticLocators = response.data.tacticLocators;
           $.each(theTactic.tacticLocators, function(i, loc) { theTactic.tacticLocatorMap[loc.node] = loc; })

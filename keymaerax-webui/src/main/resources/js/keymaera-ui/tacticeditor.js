@@ -9,7 +9,8 @@ angular.module('keymaerax.ui.tacticeditor', ['ngSanitize', 'ngTextcomplete'])
             nodeId: '=',
             highlightTactics: '=?',
             onTactic: '&',     // onTactic(formulaId, tacticId)
-            onTacticScript: '&'
+            onTacticScript: '&',
+            onTacticEdit: '&',
         },
         link: function(scope, elem, attr) {
           var tacticContent = elem.find('.k4-tactic-area');
@@ -119,14 +120,13 @@ angular.module('keymaerax.ui.tacticeditor', ['ngSanitize', 'ngTextcomplete'])
           ]);
 
           scope.executeTacticDiff = function(stepwise) {
-            if (scope.tactic.tacticDel === '' || scope.tactic.tacticDel === 'nil') {
+            if (scope.tactic.lastExecutedTacticText === scope.tactic.tacticText && scope.tactic.tacticDel === '' 
+                  || scope.tactic.tacticDel === 'nil') {
               scope.onTacticScript({tacticText: scope.tactic.tacticDiff, stepwise: stepwise});
             } else {
               //todo prune deleted stuff instead of rerun from root
               var tactic = scope.tactic.tacticText;
-              sequentProofData.prune(scope.userId, scope.proofId, sequentProofData.proofTree.root, function() {
-                scope.onTacticScript({tacticText: tactic, stepwise: true});
-              });
+              scope.onTacticEdit({tacticText: tactic, stepwise: stepwise});
             }
           };
 
@@ -139,10 +139,12 @@ angular.module('keymaerax.ui.tacticeditor', ['ngSanitize', 'ngTextcomplete'])
               //@note compute diff
               var diffInput = { 'old' : scope.tactic.lastExecutedTacticText, 'new' : newText };
               if (tacticDiffRequestTimer) clearTimeout(tacticDiffRequestTimer);
-              tacticDiffRequestTimer = setTimeout(function() {
+              tacticDiffRequestTimer = setTimeout(requestDiff, 1000);
+              function requestDiff() {
                 $http.post('proofs/user/' + scope.userId + '/' + scope.proofId + '/tacticDiff', diffInput)
                   .then(function(response) {
                     scope.tacticError.isVisible = false;
+                    if (newText !== scope.tactic.tacticText) return;
 
                     //@todo multiple diffs
                     scope.tactic.tacticDel = response.data.replOld.length > 0 ? response.data.replOld[0].repl : "";
@@ -157,6 +159,7 @@ angular.module('keymaerax.ui.tacticeditor', ['ngSanitize', 'ngTextcomplete'])
 //                  scope.tactic.tacticText = formattedTactic;
                   })
                   .catch(function(response) {
+                    if (newText !== scope.tactic.tacticText) return;
                     if (response.data !== undefined) {
                       var errorText = response.data.textStatus;
                       var location = response.data.location; // { column: Int, line: Int }
@@ -169,7 +172,7 @@ angular.module('keymaerax.ui.tacticeditor', ['ngSanitize', 'ngTextcomplete'])
 //                      newText.substring(unparsableStart, newText.length) + '</span>'
                     }
                   });
-              }, 1000);
+              }
             }
           });
 
@@ -190,7 +193,7 @@ angular.module('keymaerax.ui.tacticeditor', ['ngSanitize', 'ngTextcomplete'])
         template: '<div class="row"><div class="col-md-12">' +
                     '<div class="k4-tactic-backdrop"><div class="k4-tactic-highlights" ng-bind-html="tactic.highlightedText"></div></div>' +
                     '<textarea class="k4-tactic-area" ng-model="tactic.tacticText" ' +
-                        'ng-shift-enter="executeTacticDiff(false)" ng-trim="false" ' +
+                        'ng-shift-enter="executeTacticDiff(true)" ng-trim="false" ' +
                         'rows="{{ getRows(tactic.tacticText) }}" spellcheck="false" ' +
                         'ng-click="updateSelection()" ng-keyup="updateSelection()"></textarea>' +
                   '</div></div>' +

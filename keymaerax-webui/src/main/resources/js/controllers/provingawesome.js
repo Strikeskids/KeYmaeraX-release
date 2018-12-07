@@ -595,6 +595,24 @@ angular.module('keymaerax.controllers').controller('TaskCtrl',
         });
     }
 
+    $scope.onTacticEdit = function(tacticText, stepwise) {
+      var nodeId = '()' //@note root node id
+      spinnerService.show('tacticExecutionSpinner');
+      var uri = 'proofs/user/' + $scope.userId + '/' + $scope.proofId + '/' + nodeId + '/doCustomTactic';
+      $http.post(uri + '?stepwise='+stepwise, tacticText)
+        .then(function(response) { $scope.runningTask.start($scope.proofId, nodeId, response.data.taskId,
+                                      $scope.updateMainProof, $scope.broadcastProofError, undefined); })
+        .catch(function(err) {
+          spinnerService.hideAll();
+          if (err.data.errorThrown != undefined) {
+            //@note errors that occur before scheduling (parsing etc.), but not tactic execution errors -> cannot repeat from here
+            $rootScope.$broadcast('proof.message', err.data);
+          } else {
+            console.error("Expected errorThrown field on error object but found something else: " + JSON.stringify(err));
+          }
+        });
+    }
+
     $scope.onTacticScript = function(tacticText, stepwise) {
       var nodeId = sequentProofData.agenda.selectedId();
       if (nodeId != undefined) {
