@@ -1191,6 +1191,10 @@ mark.extra-tactic {
   max-width: 100%;
 }
 
+.k4-peek-tactic {
+  margin-bottom: 1em;
+}
+
 /*
  *  Overridden UI-Tree
  */

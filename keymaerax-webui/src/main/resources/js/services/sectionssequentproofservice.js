@@ -8,8 +8,9 @@ makeLazyNode = function(http, userId, proofId, node) {
     else {
       theNode.sequent = {};
       http.get('proofs/user/' + userId + '/' + proofId + '/' + theNode.id + '/sequent').then(function(response) {
-        theNode.sequent.ante = response.data.sequent.ante;
-        theNode.sequent.succ = response.data.sequent.succ;
+        var node = response.data.node;
+        theNode.sequent.ante = node.sequent.ante;
+        theNode.sequent.succ = node.sequent.succ;
       });
       return theNode.sequent;
     }

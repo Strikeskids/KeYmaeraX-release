@@ -476,6 +476,42 @@ angular.module('keymaerax.controllers').controller('TaskCtrl',
       );
     }
 
+    $scope.fetchNodeSequent = function(nodeId) {
+      return $http.get('proofs/user/' + $scope.userId + '/' + $scope.proofId + '/' + nodeId + '/sequent').then(function(response) {
+        $scope.prooftree.addNode(response.data.node);
+        return $scope.prooftree.node(nodeId);
+      });
+    }
+
+    function showTacticSequent(node) {
+      if (node.sequent.succ.length > 0) {
+        $scope.shownTacticId = node.id;
+        $scope.shownTacticSequent = node.sequent;
+      }
+    }
+
+    $scope.shouldHideTacticSequent = function() {
+      return $scope.shownTacticId === $scope.tactic.selectedTacticId
+    }
+
+    $scope.toggleTacticSequent = function() {
+      if ($scope.shouldHideTacticSequent()) {
+        $scope.shownTacticId = undefined;
+      } else {
+        $scope.openTacticSequent();
+      }
+    }
+
+    $scope.openTacticSequent = function() {
+      var id = $scope.tactic.selectedTacticId;
+      var node = $scope.prooftree.node(id);
+      if (node && node.sequent) {
+        showTacticSequent(node);
+      } else if (id) {
+        $scope.fetchNodeSequent(id).then(showTacticSequent);
+      }
+    }
+
     $scope.doTactic = function(formulaId, tacticId) {
       var nodeId = sequentProofData.agenda.selectedId();
       var base = 'proofs/user/' + $scope.userId + '/' + $scope.proofId + '/' + nodeId;

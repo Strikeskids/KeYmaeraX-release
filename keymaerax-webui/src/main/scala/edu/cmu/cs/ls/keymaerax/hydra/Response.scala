@@ -455,8 +455,7 @@ case class NodeChildrenResponse(proofId: String, parent: ProofTreeNode) extends 
 case class ProofNodeSequentResponse(proofId: String, node: ProofTreeNode) extends Response {
   def getJson = JsObject(
     "proofId" -> JsString(proofId),
-    "nodeId" -> JsString(node.id.toString),
-    "sequent" -> (node.goal match { case None => JsNull case Some(goal) => sequentJson(goal) })
+    "node" -> nodeJson(node)._2,
   )
 }
 

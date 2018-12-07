@@ -6,9 +6,10 @@ makeLazyNode = function(http, userId, proofId, node) {
     else {
       theNode.sequent = {};
       http.get('proofs/user/' + userId + '/' + proofId + '/' + theNode.id + '/sequent').then(function(response) {
-        if (response.data.sequent != undefined) {
-          theNode.sequent.ante = response.data.sequent.ante;
-          theNode.sequent.succ = response.data.sequent.succ;
+        var node = response.data.node;
+        if (node.sequent != undefined) {
+          theNode.sequent.ante = node.sequent.ante;
+          theNode.sequent.succ = node.sequent.succ;
         } else {
           theNode.sequent.ante = [];
           theNode.sequent.succ = [];
@@ -107,8 +108,10 @@ angular.module('keymaerax.services').factory('ProofTree', function() {
           if (this.nodesMap[node.id] === undefined) {
             this.nodesMap[node.id] = node;
           } else {
-            this.nodesMap[node.id].children = node.children;
-            if (node.rule) this.nodesMap[node.id].rule = node.rule;
+            var old = this.nodesMap[node.id];
+            old.children = node.children;
+            old.rule = node.rule || old.rule;
+            old.sequent = node.sequent || old.sequent;
           }
         },
         /** Returns the proof tree root. */
