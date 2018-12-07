@@ -504,7 +504,7 @@ angular.module('keymaerax.controllers').controller('TaskCtrl',
     }
 
     $scope.shouldHideTacticSequent = function() {
-      return $scope.shownTacticId === $scope.tactic.selectedTacticId
+      return $scope.shownTacticId && $scope.shownTacticId === $scope.tactic.selectedTacticId;
     }
 
     $scope.toggleTacticSequent = function() {
@@ -730,7 +730,7 @@ angular.module('keymaerax.controllers').controller('TaskCtrl',
         })
       })
     }
-      
+
     //Save a name edited using the inline editor.
     $scope.saveProofName = function(newName) {
       $http.post("proofs/user/" + $scope.userId + "/" + $scope.proofId + "/name/" + newName, {})

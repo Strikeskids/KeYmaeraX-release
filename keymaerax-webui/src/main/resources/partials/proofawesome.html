@@ -304,7 +304,8 @@
                                     <span class="input-group-btn"
                                           uib-tooltip="Show the sequent before selected tactic was executed"
                                           data-intro="Show what the sequent was when executing a tactic" data-position="right">
-                                        <button class="btn btn-default" ng-click="toggleTacticSequent()">
+                                        <button class="btn btn-default" ng-click="toggleTacticSequent()"
+                                            ng-disabled='!(tactic.selectedTacticId || shouldHideTacticSequent())'>
                                             {{ shouldHideTacticSequent() ? 'Hide' : 'Show' }}
                                         </button>
                                     </span>

@@ -35,8 +35,8 @@ angular.module('keymaerax.ui.tacticeditor', ['ngSanitize', 'ngTextcomplete'])
               return
             }
             var regions = []
-            for (var id = scope.nodeId; id; ) {
-              h.addNode(id, 'active-tactic' + (id === scope.nodeId ? ' last-tactic' : ''));
+            for (var id = scope.nodeId, started = false; id; ) {
+              started = h.addNode(id, 'active-tactic' + (!started ? ' last-tactic' : '')) || started;
               var node = tree.node(id);
               id = node && node.parent;
             }
@@ -234,6 +234,7 @@ angular.module('keymaerax.ui.tacticeditor')
 
     TextHighlighter.prototype.addNode = function(nodeId, classes) {
       this.nodes[nodeId] = (this.nodes[nodeId] || '') + ' ' + classes;
+      return !!tactic.tacticLocatorMap[nodeId];
     }
 
     TextHighlighter.prototype.highlight = function(text) {
