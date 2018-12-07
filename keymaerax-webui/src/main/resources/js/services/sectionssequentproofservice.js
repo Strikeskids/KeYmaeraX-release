@@ -38,11 +38,13 @@ angular.module('keymaerax.services').factory('Agenda', function() {
        },
        deselect: function(item) { /* do not deselect item, otherwise agenda name textbox won't show */ },
        select: function(item) {
-         $.each(this.items(), function(i, e) { e.isSelected = false; });
-         if (item) {
-           item.isSelected = true;
-           this.selectedTab.tabId = item.id;
-         }
+        if (!item) return;
+        var items = this.items();
+        $.each(items, function(i, e) { e.isSelected = false; });
+        if (item) {
+          item.isSelected = true;
+          this.selectedTab.tabId = item.id;
+        }
        },
        selectById: function(itemId) { this.select(this.itemsMap[itemId]); },
        itemsByProofStep: function(ptNodeId) {
@@ -308,14 +310,16 @@ angular.module('keymaerax.services').factory('sequentProofData', ['$http', '$roo
           if (parent.children === undefined || parent.children === null) parent.children = [node.id];
           else parent.children.push(node.id);
           // update agenda: prepend new open goal to deduction path
+          var select = oldAgendaItem.isSelected;
           var newAgendaItem = {
             id: node.id,
             name: oldAgendaItem.name,                               // inherit name from old
-            isSelected: i === 0 ? oldAgendaItem.isSelected : false, // first new item inherits selection from old
             deduction: $.extend(true, {}, oldAgendaItem.deduction)  // object deep copy
           }
           newAgendaItem.deduction.sections[0].path.unshift(node.id);
           theAgenda.itemsMap[newAgendaItem.id] = newAgendaItem;
+          if (select)
+            theAgenda.select(newAgendaItem)
         });
         delete theAgenda.itemsMap[oldAgendaItem.id];
         theAgenda.select(theAgenda.itemsMap[theAgenda.selectedId()]);

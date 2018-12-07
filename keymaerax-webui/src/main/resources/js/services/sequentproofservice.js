@@ -41,11 +41,15 @@ angular.module('keymaerax.services').factory('Agenda', function() {
        },
        deselect: function(item) { /* do not deselect item, otherwise agenda name textbox won't show */ },
        select: function(item) {
-         $.each(this.items(), function(i, e) { e.isSelected = false; });
-         if (item) {
-           item.isSelected = true;
-           this.selectedTab.tabId = item.id;
-         }
+        if (!item) return;
+        $.each(this.items(), function(i, e) { e.isSelected = false; });
+        if (item) {
+          item.isSelected = true;
+          this.selectedTab.tabId = item.id;
+        }
+        if (this.selectedId() === undefined && this.items().length > 0) {
+          this.select(this.items()[0]);
+        }
        },
        selectById: function(itemId) { this.select(this.itemsMap[itemId]); },
        itemsByProofStep: function(ptNodeId) {
