@@ -1742,7 +1742,7 @@ class RunBelleTermRequest(db: DBAbstraction, userId: String, proofId: String, no
                     case _ => throw new Exception("Unexpected node ID shape " + node.id.toString
                       + ". Expected step path ID of the form (node ID,branch index)")
                   }
-                  val taskId = node.stepTactic(userId, stepByStepInterpreter(proofId.toInt, startStep), appliedExpr)
+                  val taskId = node.stepTactic(userId, ExhaustiveSequentialInterpreter, appliedExpr, ruleName)
                   RunBelleTermResponse(proofId, node.id.toString, taskId) :: Nil
                 } else {
                   val localProvable = ProvableSig.startProof(sequent)
