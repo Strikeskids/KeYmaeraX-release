@@ -1,7 +1,7 @@
 package edu.cmu.cs.ls.keymaerax.hydra
 
 import edu.cmu.cs.ls.keymaerax.bellerophon._
-import edu.cmu.cs.ls.keymaerax.bellerophon.parser.{BRANCH_COMBINATOR, BelleParser, SEQ_COMBINATOR}
+import edu.cmu.cs.ls.keymaerax.bellerophon.parser.{BRANCH_COMBINATOR, BelleParser, PENDING, SEQ_COMBINATOR}
 import edu.cmu.cs.ls.keymaerax.btactics.{Generator, Idioms}
 import edu.cmu.cs.ls.keymaerax.core.Formula
 import edu.cmu.cs.ls.keymaerax.parser.{Location, SuffixRegion}
@@ -58,7 +58,7 @@ object ExtractTacticFromTrace {
 
   private def extractTacticsNonempty(indent: String)(node: ProofTreeNode): List[TacticStringifier] = {
     extractTactics(indent)(node) match {
-      case Nil => TacticPadString("nil") :: Nil
+      case Nil => TacticNodeString(node.id, "nil") :: Nil
       case nonempty => nonempty
     }
   }
@@ -67,9 +67,15 @@ object ExtractTacticFromTrace {
     seqCombine(
       node.action match {
         case None | Some("assert") =>
-          TacticNodeString(node.id, "nil") :: Nil
+          Nil
         case Some(m) =>
-          TacticNodeString(node.id, m.replace("\n", "\n" + indent)) :: Nil
+          val indented = m.replace("\n", "\n" + indent)
+          val wrapped =
+            if (!m.startsWith(PENDING.img) && m.contains(SEQ_COMBINATOR.img))
+              "(" + indented + ")"
+            else
+              indented
+          TacticNodeString(node.id, wrapped) :: Nil
       },
       branchCombine(indent)(node.children)
     )

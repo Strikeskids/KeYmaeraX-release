@@ -49,7 +49,7 @@ private object AFTER_COMBINATOR extends BelleTerminal(">") {
 object BRANCH_COMBINATOR extends BelleTerminal("<")
 
 private object ON_ALL extends BelleTerminal("doall")
-private object PENDING extends BelleTerminal("pending")
+object PENDING extends BelleTerminal("pending")
 
 private object KLEENE_STAR extends BelleTerminal("*") {
   override def regexp = "\\*".r
