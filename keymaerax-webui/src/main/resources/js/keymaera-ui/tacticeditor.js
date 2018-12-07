@@ -1,16 +1,19 @@
 angular.module('keymaerax.ui.tacticeditor', ['ngSanitize', 'ngTextcomplete'])
-  .directive('k4TacticEditor', ['$http', '$sce', 'derivationInfos', 'Textcomplete', 'sequentProofData',
-      function($http, $sce, derivationInfos, Textcomplete, sequentProofData) {
+  .directive('k4TacticEditor', ['$http', '$sce', 'derivationInfos', 'Textcomplete', 'sequentProofData', 'TextHighlighter',
+      function($http, $sce, derivationInfos, Textcomplete, sequentProofData, TextHighlighter) {
     return {
         restrict: 'AE',
         scope: {
             userId: '=',
             proofId: '=',
             nodeId: '=',
+            highlightTactics: '=?',
             onTactic: '&',     // onTactic(formulaId, tacticId)
             onTacticScript: '&'
         },
         link: function(scope, elem, attr) {
+          var tacticContent = elem.find('.k4-tactic-area');
+
           scope.tactic = sequentProofData.tactic;
           scope.tacticError = {
             error: "",
@@ -22,81 +25,44 @@ angular.module('keymaerax.ui.tacticeditor', ['ngSanitize', 'ngTextcomplete'])
             return (text.match(/\n/g) || '').length + 1
           }
 
-          function html5Entities(value) {
-            return value.replace(/[\u00A0-\u9999<>\&\'\"]/gim, function(i) {
-              return '&#' + i.charCodeAt(0) + ';'
-            })
-          }
-
-          function highlight(text, regions) {
-            regions.sort(function(a, b) {
-              if (a.location.startRow === b.location.startRow) {
-                return a.location.startCol - b.location.startCol;
-              } else {
-                return a.location.startRow - b.location.startRow;
-              }
-            })
-            var result = ''
-            for (var i = 0, rj = 0, col = 1, row = 1, highlighting = false; i < text.length; ++i) {
-              while (rj < regions.length
-                  && regions[rj].location.endRow <= row && regions[rj].location.endCol <= col) {
-                if (highlighting) {
-                  result += '</mark>'
-                  highlighting = false
-                }
-                rj++;
-              }
-              var region = regions[rj]
-              if (!highlighting && region !== undefined && region.location.startRow <= row && region.location.startCol <= col) {
-                result += '<mark class="' + region.class + '">'
-                highlighting = true
-              }
-              if (text[i] == '\n') {
-                row++;
-                col = 1;
-              } else {
-                col++;
-              }
-              result += html5Entities(text[i])
-            }
-
-            if (highlighting) {
-              result += "</mark>";
-            }
-
-            return $sce.trustAs($sce.HTML, result)
-          }
-
-          scope.$watchGroup(['tactic.tacticText', 'nodeId'], function() {
-            var tactic = scope.tactic
-            var tree = sequentProofData.proofTree
+          scope.$watchGroup(['tactic.tacticText', 'highlightTactics', 'tactic.selectedTacticId'], function() {
+            var h = new TextHighlighter();
+            var tactic = sequentProofData.tactic;
+            var tree = sequentProofData.proofTree;
             if (tactic.tacticText !== tactic.lastExecutedTacticText) {
               //@todo Highlight modified tactics
               tactic.highlightedText = ''
               return
             }
-            var history = []
+            var regions = []
             for (var id = scope.nodeId; id; ) {
-              history.push(id)
-              var node = tree.node(id)
-              id = node && node.parent
+              h.addNode(id, 'active-tactic' + (id === scope.nodeId ? ' last-tactic' : ''));
+              var node = tree.node(id);
+              id = node && node.parent;
             }
-            var highlightRegions =
-              $.grep(
-                $.map(history, function(id, i) {
-                  var loc = tactic.tacticLocators[id];
-                  return {
-                    location: loc && loc.location,
-                    class: 'active-tactic' + (i === 0 ? ' last-tactic' : ''),
-                  };
-                }),
-                function(x) { return !!x.location; },
-              )
-            tactic.highlightedText = highlight(tactic.tacticText, highlightRegions)
-          })
+            $.each(scope.highlightTactics || [], function(i, nodeId) { h.addNode(nodeId, 'extra-tactic'); });
+            h.addNode(tactic.selectedTacticId, 'selected-tactic')
+            tactic.highlightedText = h.highlight(tactic.tacticText)
+          });
+
+          scope.updateSelection = function() {
+            var point = scope.tactic.selectionStart = tacticContent.prop('selectionStart')
+            // Find first tactic ending after point
+            var lo = 0, hi = scope.tactic.tacticLocators.length;
+            while (lo < hi) {
+              var mid = lo + ((hi - lo) >> 1);
+              var midLocator = scope.tactic.tacticLocators[mid];
+              if (midLocator.end < point) {
+                lo = mid + 1;
+              } else {
+                hi = mid;
+              }
+            }
+            var locator = scope.tactic.tacticLocators[lo];
+            scope.tactic.selectedTacticId = locator && locator.node;
+          }
 
           var combinators = ['*', '|', ';', '<'];
-          var tacticContent = elem.find('.k4-tactic-area');
           var textComplete = new Textcomplete(tacticContent, [
             // combinators
             {
@@ -224,8 +190,9 @@ angular.module('keymaerax.ui.tacticeditor', ['ngSanitize', 'ngTextcomplete'])
         template: '<div class="row"><div class="col-md-12">' +
                     '<div class="k4-tactic-backdrop"><div class="k4-tactic-highlights" ng-bind-html="tactic.highlightedText"></div></div>' +
                     '<textarea class="k4-tactic-area" ng-model="tactic.tacticText" ' +
-                        'ng-shift-enter="executeTacticDiff(false)" ng-trim="false" '+
-                        'rows="{{ getRows(tactic.tacticText) }}" spellcheck="false"></textarea>' +
+                        'ng-shift-enter="executeTacticDiff(false)" ng-trim="false" ' +
+                        'rows="{{ getRows(tactic.tacticText) }}" spellcheck="false" ' +
+                        'ng-click="updateSelection()" ng-keyup="updateSelection()"></textarea>' +
                   '</div></div>' +
                   '<div class=row><div class="col-md-12">' +
                   '<k4-auto-hide-alert message="tacticError.text"' +
@@ -234,4 +201,70 @@ angular.module('keymaerax.ui.tacticeditor', ['ngSanitize', 'ngTextcomplete'])
                   '</k4-auto-hide-alert>' +
                   '</div></div>'
     };
+  }]);
+
+angular.module('keymaerax.ui.tacticeditor')
+  .factory('TextHighlighter', ['sequentProofData', '$sce', function(sequentProofData, $sce) {
+    var tactic = sequentProofData.tactic;
+
+    function TextHighlighter() {
+      this.regions = [];
+      this.nodes = {};
+    }
+
+    function html5Entities(value) {
+      return value.replace(/[\u00A0-\u9999<>\&\'\"]/gim, function(i) {
+        return '&#' + i.charCodeAt(0) + ';'
+      })
+    }
+
+    function nodesToRegions(nodes) {
+      var regions = [];
+      $.each(nodes, function(nodeId, classes) {
+        var loc = tactic.tacticLocatorMap[nodeId];
+        if (loc) {
+          regions.push({
+            location: loc,
+            classes: classes,
+          });
+        }
+      });
+      return regions;
+    }
+
+    TextHighlighter.prototype.addNode = function(nodeId, classes) {
+      this.nodes[nodeId] = (this.nodes[nodeId] || '') + ' ' + classes;
+    }
+
+    TextHighlighter.prototype.highlight = function(text) {
+      var regions = nodesToRegions(this.nodes);
+      regions.sort(function(a, b) {
+        return a.location.start - b.location.start;
+      });
+
+      var result = ''
+      for (var i = 0, rj = 0, highlighting = false; i < text.length; ++i) {
+        while (rj < regions.length && regions[rj].location.end <= i) {
+          if (highlighting) {
+            result += '</mark>'
+            highlighting = false
+          }
+          rj++;
+        }
+        var region = regions[rj];
+        if (!highlighting && region !== undefined && region.location.start <= i) {
+          result += '<mark class="' + region.classes + '">'
+          highlighting = true
+        }
+        result += html5Entities(text[i])
+      }
+
+      if (highlighting) {
+        result += "</mark>";
+      }
+
+      return $sce.trustAs($sce.HTML, result)
+    }
+
+    return TextHighlighter;
   }]);

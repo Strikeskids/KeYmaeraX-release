@@ -671,7 +671,8 @@ object Helpers {
   def locatorJson(loc: TacticLocator): JsValue = JsObject(
     "node" -> JsString(loc.node.toString),
     "tactic" -> JsString(loc.tactic),
-    "location" -> locationJson(loc.loc)
+    "start" -> JsNumber(loc.start),
+    "end" -> JsNumber(loc.end),
   )
 
   /** Only first node's sequent is printed. */
@@ -1266,9 +1267,9 @@ case class GetTacticResponse(tacticText: String) extends Response {
 case class ExtractTacticResponse(tacticText: String, locators: List[TacticLocator]) extends Response {
   def getJson = JsObject(
     "tacticText" -> JsString(tacticText),
-    "tacticLocators" -> JsObject(
-      locators.map(loc => (loc.node.toString, locatorJson(loc)))
-    )
+    "tacticLocators" -> JsArray(
+      locators.map(locatorJson).toVector
+    ),
   )
 }
 

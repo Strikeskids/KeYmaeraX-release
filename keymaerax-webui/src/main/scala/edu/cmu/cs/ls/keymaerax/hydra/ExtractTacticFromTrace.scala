@@ -96,13 +96,12 @@ object ExtractTacticFromTrace {
   }
 
   private def fillLocations(extracted: List[TacticStringifier]): List[TacticLocator] =
-    extracted.foldLeft((SuffixRegion(1, 1): Location, Nil: List[TacticLocator])) {
-      case ((reg, rest), TacticNodeString(node, tactic)) =>
-        val (cur, after) = reg.advanceBy(tactic)
-        (after, TacticLocator(node, tactic, cur) :: rest)
+    extracted.foldLeft(0: Int, Nil: List[TacticLocator]) {
+      case ((start, rest), TacticNodeString(node, tactic)) =>
+        val end = start + tactic.length
+        (end, TacticLocator(node, tactic, start, end) :: rest)
       case ((reg, rest), s) =>
-        val (_, after) = reg.advanceBy(s.tacticPart)
-        (after, rest)
+        (reg + s.tacticPart.length, rest)
     }._2.reverse
 }
 
@@ -118,7 +117,7 @@ private case class TacticNodeString(node: ProofTreeNodeId, tactic: String) exten
   override def tacticPart: String = tactic
 }
 
-case class TacticLocator(node: ProofTreeNodeId, tactic: String, loc: Location)
+case class TacticLocator(node: ProofTreeNodeId, tactic: String, start: Int, end: Int)
 
 object TacticExtractionErrors {
 

@@ -500,6 +500,14 @@ mark.last-tactic::after {
   height: 100%;
 }
 
+mark.selected-tactic {
+  background-color: var(--lssuperlightblue);
+}
+
+mark.extra-tactic {
+  background-color: var(--lslightred);
+}
+
 .k4-tactic-highlights mark {
   padding: 0;
   color: transparent;
