@@ -510,6 +510,8 @@ class StepByStepRecordingListener(db: DBAbstraction,
         case ExecutionStepStatus.DependsOnChildren | ExecutionStepStatus.Running =>
           node.status = ExecutionStepStatus.Aborted
           node.update()
+        case _ =>
+          ()
       }
     })
   }

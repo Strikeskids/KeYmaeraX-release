@@ -279,7 +279,7 @@ abstract class SequentialInterpreter(val listeners: scala.collection.immutable.S
       case _ => throw new BelleThrowable(s"Attempted to give a label to a value that is not a Provable: ${v.getClass.getName}").inContext(BelleDot, "")
     }
 
-    case PendingTactic(_) => v //@note noop, but included for serialization purposes
+    case PendingTactic(_, _) => v //@note noop, but included for serialization purposes
     case DefTactic(_, _) => v //@note noop, but included for serialization purposes
     case DefExpression(Equal(fn@FuncOf(name, arg), t)) =>
       val subst = arg match {
