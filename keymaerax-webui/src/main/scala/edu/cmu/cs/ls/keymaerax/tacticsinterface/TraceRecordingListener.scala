@@ -322,12 +322,12 @@ class StepByStepRecordingListener(db: DBAbstraction,
           // Failing on the second branch
           failureRecorded = true
           if (!child.failureRecorded)
-            currentTip = addPendingNode(executable.right, this, currentTip).next
+            currentTip = addPendingNode(executable.right, Some(this), currentTip).next
         } else if (child.failureRecorded) {
           failureRecorded = true
           // Failing on the first branch
           // Record a second pending tactic on top of the first
-          currentTip = addPendingNode(executable.right, this, currentTip).next
+          currentTip = addPendingNode(executable.right, Some(this), currentTip).next
         }
       }
     }
@@ -357,7 +357,7 @@ class StepByStepRecordingListener(db: DBAbstraction,
         failureRecorded = true
         val times = executable.times - childrenFinished + (if (child.failureRecorded) 0 else 1)
         if (times > 0) {
-          currentTip = addPendingNode(RepeatTactic(executable.child, times), this, currentTip).next
+          currentTip = addPendingNode(RepeatTactic(executable.child, times), Some(this), currentTip).next
         }
       }
     }
@@ -392,7 +392,7 @@ class StepByStepRecordingListener(db: DBAbstraction,
       if (child.status != ExecutionStepStatus.Finished && !child.failureRecorded) {
         //@todo Record failures and successes to wrap entire branch if all children fail
         failureRecorded = true
-        val node = addPendingNode(child.executable, this, child.next)
+        val node = addPendingNode(child.executable, Some(this), child.next)
         allStepsRev = node.next.reverse ++ allStepsRev
       } else {
         allStepsRev = child.next.reverse ++ allStepsRev
@@ -426,12 +426,12 @@ class StepByStepRecordingListener(db: DBAbstraction,
     }
   }
 
-  private def addPendingNode(executable: BelleExpr, parent: StepNode, previous: List[StepPointer])
+  private def addPendingNode(executable: BelleExpr, parent: Option[StepNode], previous: List[StepPointer])
   : StepNode = {
     val target = previous.last
     val provable = db.getExecutionStep(proofId, target.step).get.local.sub(target.branch)
     val notes = if (previous.length > 1) Some("Outside branch") else None
-    val node = new AtomicStepNode(Some(target), Some(parent), PendingTactic(notes, executable))
+    val node = new AtomicStepNode(Some(target), parent, PendingTactic(notes, executable))
 
     node.status = ExecutionStepStatus.Finished
     node.local = provable
@@ -495,6 +495,8 @@ class StepByStepRecordingListener(db: DBAbstraction,
       case None =>
         if (db.getPlainOpenSteps(proofId).isEmpty)
           db.updateProofSetClosed(proofId)
+        if (curr.status != ExecutionStepStatus.Finished && !curr.failureRecorded)
+          addPendingNode(curr.executable, None, curr.next)
         isDone = true
 
       case Some(parent) =>
