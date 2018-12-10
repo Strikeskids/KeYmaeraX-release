@@ -14,16 +14,13 @@ angular.module('keymaerax.ui.tacticeditor', ['ngSanitize', 'ngTextcomplete'])
         },
         link: function(scope, elem, attr) {
           var tacticContent = elem.find('.k4-tactic-area');
+          var tacticMirror = elem.find('.k4-tactic-mirror');
 
           scope.tactic = sequentProofData.tactic;
           scope.tacticError = {
             error: "",
             details: "",
             isVisible: false
-          }
-
-          scope.getRows = function(text) {
-            return (text.match(/\n/g) || '').length + 1
           }
 
           scope.$watchGroup(['tactic.tacticText', 'highlightTactics', 'tactic.selectedTacticId'], function() {
@@ -61,6 +58,9 @@ angular.module('keymaerax.ui.tacticeditor', ['ngSanitize', 'ngTextcomplete'])
             }
             var locator = scope.tactic.tacticLocators[lo];
             scope.tactic.selectedTacticId = locator && locator.node;
+
+            tacticMirror.text(tacticContent.val());
+            tacticContent.height(tacticMirror.height());
           }
 
           var combinators = ['*', '|', ';', '<'];
@@ -191,10 +191,11 @@ angular.module('keymaerax.ui.tacticeditor', ['ngSanitize', 'ngTextcomplete'])
           });
         },
         template: '<div class="row"><div class="col-md-12">' +
+                    '<div class="k4-tactic-backdrop"><div class="k4-tactic-mirror"></div></div>' +
                     '<div class="k4-tactic-backdrop"><div class="k4-tactic-highlights" ng-bind-html="tactic.highlightedText"></div></div>' +
                     '<textarea class="k4-tactic-area" ng-model="tactic.tacticText" ' +
                         'ng-shift-enter="executeTacticDiff(true)" ng-trim="false" ' +
-                        'rows="{{ getRows(tactic.tacticText) }}" spellcheck="false" ' +
+                        'spellcheck="false" ' +
                         'ng-click="updateSelection()" ng-keyup="updateSelection()"></textarea>' +
                   '</div></div>' +
                   '<div class=row><div class="col-md-12">' +

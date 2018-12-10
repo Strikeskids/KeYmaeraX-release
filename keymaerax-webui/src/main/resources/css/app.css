@@ -478,7 +478,7 @@ del {
   color: transparent;
 }
 
-.k4-tactic-highlights {
+.k4-tactic-mirror, .k4-tactic-highlights {
   font-family: monospace;
   white-space: pre-wrap;
   word-wrap: break-word;
